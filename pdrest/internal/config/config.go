@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -13,6 +14,9 @@ import (
 type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
+	WAF      WAFConfig
+	JWT      JWTConfig
+	Telegram TelegramConfig
 }
 
 type ServerConfig struct {
@@ -27,6 +31,27 @@ type DatabaseConfig struct {
 	Password string
 	DBName   string
 	MaxConns int
+}
+
+type WAFConfig struct {
+	Active              bool // Enable/disable WAF (default: false)
+	RequireSessionID    bool
+	SessionIDHeader     string
+	SessionIDCookie     string
+	BanOnMissingSession bool
+	BanTTLHours         int
+	WhitelistedPaths    string // Comma-separated list of paths
+}
+
+type JWTConfig struct {
+	SecretKey       string
+	AccessTokenTTL  int  // in hours
+	RefreshTokenTTL int  // in hours
+	StrictMode      bool // if false, only check token is non-empty
+}
+
+type TelegramConfig struct {
+	BotToken string
 }
 
 func Load() *Config {
@@ -51,6 +76,9 @@ func Load() *Config {
 		log.Println("Warning: .env file not found, using environment variables and defaults")
 	}
 
+	// Parse whitelisted paths
+	whitelistedPathsStr := getEnv("WAF_WHITELISTED_PATHS", "/api/status")
+
 	return &Config{
 		Server: ServerConfig{
 			Host: getEnv("SERVER_HOST", ""),
@@ -63,6 +91,24 @@ func Load() *Config {
 			Password: getEnv("DB_PASSWORD", ""),
 			DBName:   getEnv("DB_NAME", "pumpdump_db"),
 			MaxConns: getEnvAsInt("DB_MAX_CONNS", 25),
+		},
+		WAF: WAFConfig{
+			Active:              getEnvAsBool("WAF_ACTIVE", false),
+			RequireSessionID:    getEnvAsBool("WAF_REQUIRE_SESSION_ID", true),
+			SessionIDHeader:     getEnv("WAF_SESSION_ID_HEADER", "X-SESSION-ID"),
+			SessionIDCookie:     getEnv("WAF_SESSION_ID_COOKIE", "X-SESSION-ID"),
+			BanOnMissingSession: getEnvAsBool("WAF_BAN_ON_MISSING_SESSION", true),
+			BanTTLHours:         getEnvAsInt("WAF_BAN_TTL_HOURS", 24),
+			WhitelistedPaths:    whitelistedPathsStr,
+		},
+		JWT: JWTConfig{
+			SecretKey:       getEnv("JWT_SECRET_KEY", "your-secret-key-change-in-production"),
+			AccessTokenTTL:  getEnvAsInt("JWT_ACCESS_TOKEN_TTL_HOURS", 1),
+			RefreshTokenTTL: getEnvAsInt("JWT_REFRESH_TOKEN_TTL_HOURS", 24),
+			StrictMode:      getEnvAsBool("JWT_STRICT_MODE", true),
+		},
+		Telegram: TelegramConfig{
+			BotToken: getEnv("TELEGRAM_BOT_TOKEN", ""),
 		},
 	}
 }
@@ -84,6 +130,33 @@ func (c *Config) GetDatabaseURL() string {
 	)
 }
 
+// GetWhitelistedPaths returns a slice of whitelisted paths
+func (c *WAFConfig) GetWhitelistedPaths() []string {
+	if c.WhitelistedPaths == "" {
+		return []string{"/api/status"}
+	}
+
+	paths := []string{}
+	// Simple split by comma, trim whitespace
+	for _, path := range splitAndTrim(c.WhitelistedPaths, ",") {
+		if path != "" {
+			paths = append(paths, path)
+		}
+	}
+	return paths
+}
+
+func splitAndTrim(s, sep string) []string {
+	parts := []string{}
+	for _, part := range strings.Split(s, sep) {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			parts = append(parts, trimmed)
+		}
+	}
+	return parts
+}
+
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
@@ -94,6 +167,15 @@ func getEnv(key, defaultValue string) string {
 func getEnvAsInt(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if parsed, err := strconv.Atoi(value); err == nil {
+			return parsed
+		}
+	}
+	return defaultValue
+}
+
+func getEnvAsBool(key string, defaultValue bool) bool {
+	if value := os.Getenv(key); value != "" {
+		if parsed, err := strconv.ParseBool(value); err == nil {
 			return parsed
 		}
 	}

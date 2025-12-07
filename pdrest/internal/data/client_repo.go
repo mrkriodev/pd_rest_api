@@ -2,27 +2,48 @@ package data
 
 import "pdrest/internal/domain"
 
-type ClientRepository interface {
-	GetStatus(id int) (*domain.ClientStatus, error)
+type UserRepository interface {
+	GetLastLogin(uuid string) (*domain.UserLastLogin, error)
+	GetProfile(uuid string) (*domain.UserProfile, error)
+	GetUserByGoogleID(googleID string) (*domain.User, error)
+	GetUserByTelegramID(telegramID int64) (*domain.User, error)
+	CreateOrUpdateUserBySession(sessionID string, ipAddress string) error
 }
 
-type InMemoryClientRepository struct {
-	storage map[int]string
+type InMemoryUserRepository struct {
+	storage map[string]*int64
 }
 
-func NewInMemoryClientRepository() *InMemoryClientRepository {
-	return &InMemoryClientRepository{
-		storage: map[int]string{
-			1: "active",
-			2: "pending",
-			3: "blocked",
-		},
+func NewInMemoryUserRepository() *InMemoryUserRepository {
+	return &InMemoryUserRepository{
+		storage: make(map[string]*int64),
 	}
 }
 
-func (r *InMemoryClientRepository) GetStatus(id int) (*domain.ClientStatus, error) {
-	if status, ok := r.storage[id]; ok {
-		return &domain.ClientStatus{ID: id, Status: status}, nil
+func (r *InMemoryUserRepository) GetLastLogin(uuid string) (*domain.UserLastLogin, error) {
+	lastLoginAt, ok := r.storage[uuid]
+	if !ok {
+		return nil, nil
 	}
+	return &domain.UserLastLogin{UUID: uuid, LastLoginAt: lastLoginAt}, nil
+}
+
+func (r *InMemoryUserRepository) GetProfile(uuid string) (*domain.UserProfile, error) {
+	// In-memory repository doesn't have profile data
 	return nil, nil
+}
+
+func (r *InMemoryUserRepository) GetUserByGoogleID(googleID string) (*domain.User, error) {
+	// In-memory repository doesn't have Google user data
+	return nil, nil
+}
+
+func (r *InMemoryUserRepository) GetUserByTelegramID(telegramID int64) (*domain.User, error) {
+	// In-memory repository doesn't have Telegram user data
+	return nil, nil
+}
+
+func (r *InMemoryUserRepository) CreateOrUpdateUserBySession(sessionID string, ipAddress string) error {
+	// In-memory repository doesn't support user creation
+	return nil
 }

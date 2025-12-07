@@ -1,0 +1,403 @@
+openapi: 3.1.0
+info:
+  title: PD REST API
+  description: REST API server with PostgreSQL database support
+  version: 1.0.0
+  contact:
+    name: API Support
+
+servers:
+  - url: http://localhost:8080/api
+    description: Local development server
+
+paths:
+  /status:
+    get:
+      summary: Health check
+      tags:
+        - Health
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    examples:
+                      - ok
+
+  /available_events:
+    get:
+      summary: Get available events
+      tags:
+        - Events
+      responses:
+        '200':
+          description: List of events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+
+  /auth/refresh:
+    post:
+      summary: Refresh JWT token
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refresh_token
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: Token pair
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/status:
+    get:
+      summary: Check JWT authorization status
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User UUID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uuid:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/google/verify:
+    get:
+      summary: Verify Google OAuth token
+      tags:
+        - Authentication
+      security:
+        - GoogleAuth: []
+      responses:
+        '200':
+          description: JWT token pair
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/telegram/verify:
+    get:
+      summary: Verify Telegram Web Login
+      tags:
+        - Authentication
+      parameters:
+        - name: id
+          in: query
+          schema:
+            type: string
+        - name: first_name
+          in: query
+          schema:
+            type: string
+        - name: last_name
+          in: query
+          schema:
+            type: string
+        - name: username
+          in: query
+          schema:
+            type: string
+        - name: photo_url
+          in: query
+          schema:
+            type: string
+        - name: auth_date
+          in: query
+          schema:
+            type: string
+        - name: hash
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: JWT token pair
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /user/last_login/{uuid}:
+    get:
+      summary: Get user last login time
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Last login info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserLastLogin'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /user/profile/{uuid}:
+    get:
+      summary: Get user profile
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /user/openbet:
+    post:
+      summary: Create a new bet
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenBetRequest'
+      responses:
+        '200':
+          description: Bet created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenBetResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /user/betstatus:
+    get:
+      summary: Get bet status
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Bet status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BetStatusResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    GoogleAuth:
+      type: http
+      scheme: bearer
+      description: Google OAuth token
+
+  schemas:
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+        badge:
+          type: string
+        title:
+          type: string
+        desc:
+          type: string
+        deadline:
+          type: string
+          format: date-time
+        tags:
+          type: string
+        reward:
+          type: array
+        info:
+          type: string
+
+    TokenPair:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+
+    UserLastLogin:
+      type: object
+      properties:
+        uuid:
+          type: string
+        last_login_at:
+          type: integer
+          nullable: true
+
+    UserProfile:
+      type: object
+      properties:
+        uuid:
+          type: string
+        username:
+          type: string
+          nullable: true
+
+    OpenBetRequest:
+      type: object
+      required:
+        - side
+        - sum
+        - pair
+        - timeframe
+        - openPrice
+        - openTime
+      properties:
+        side:
+          type: string
+          enum: [pump, dump]
+        sum:
+          type: number
+          minimum: 0
+        pair:
+          type: string
+          examples:
+            - ETH/USDT
+        timeframe:
+          type: integer
+          description: Timeframe in seconds
+          minimum: 1
+        openPrice:
+          type: number
+          minimum: 0
+        openTime:
+          type: string
+          format: date-time
+
+    OpenBetResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+
+    BetStatusResponse:
+      type: object
+      properties:
+        side:
+          type: string
+          enum: [pump, dump]
+        sum:
+          type: number
+        pair:
+          type: string
+        timeframe:
+          type: integer
+        openPrice:
+          type: number
+        closePrice:
+          type: number
+          nullable: true
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+
