@@ -14,6 +14,7 @@ type BetRepository interface {
 	CreateBet(ctx context.Context, bet *domain.Bet) error
 	GetBetByID(ctx context.Context, betID int, userUUID string) (*domain.Bet, error)
 	UpdateBetClosePrice(ctx context.Context, betID int, closePrice float64, closeTime time.Time) error
+	GetWinningBetsByUser(ctx context.Context, userUUID string) ([]domain.Bet, error)
 }
 
 type PostgresBetRepository struct {
@@ -48,7 +49,7 @@ func (r *PostgresBetRepository) CreateBet(ctx context.Context, bet *domain.Bet) 
 	err := r.pool.QueryRow(
 		ctx,
 		query,
-		bet.UserUUID,
+		bet.UserID,
 		bet.Side,
 		bet.Sum,
 		bet.Pair,
@@ -79,7 +80,7 @@ func (r *PostgresBetRepository) GetBetByID(ctx context.Context, betID int, userU
 
 	err := r.pool.QueryRow(ctx, query, betID, userUUID).Scan(
 		&bet.ID,
-		&bet.UserUUID,
+		&bet.UserID,
 		&bet.Side,
 		&bet.Sum,
 		&bet.Pair,
@@ -120,6 +121,60 @@ func (r *PostgresBetRepository) UpdateBetClosePrice(ctx context.Context, betID i
 	return nil
 }
 
+func (r *PostgresBetRepository) GetWinningBetsByUser(ctx context.Context, userUUID string) ([]domain.Bet, error) {
+	query := `
+		SELECT id, user_uuid, side, sum, pair, timeframe, open_price, close_price, open_time, close_time, created_at, updated_at
+		FROM bets
+		WHERE user_uuid = $1 
+		  AND close_price IS NOT NULL
+		  AND (
+			(side = 'pump' AND close_price > open_price) OR
+			(side = 'dump' AND close_price < open_price)
+		  )
+		ORDER BY close_time DESC
+	`
+
+	rows, err := r.pool.Query(ctx, query, userUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get winning bets: %w", err)
+	}
+	defer rows.Close()
+
+	var bets []domain.Bet
+	for rows.Next() {
+		var bet domain.Bet
+		var closePrice *float64
+		var closeTime *time.Time
+
+		if err := rows.Scan(
+			&bet.ID,
+			&bet.UserID,
+			&bet.Side,
+			&bet.Sum,
+			&bet.Pair,
+			&bet.Timeframe,
+			&bet.OpenPrice,
+			&closePrice,
+			&bet.OpenTime,
+			&closeTime,
+			&bet.CreatedAt,
+			&bet.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan winning bet: %w", err)
+		}
+
+		bet.ClosePrice = closePrice
+		bet.CloseTime = closeTime
+		bets = append(bets, bet)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating winning bets: %w", err)
+	}
+
+	return bets, nil
+}
+
 type InMemoryBetRepository struct{}
 
 func NewInMemoryBetRepository() *InMemoryBetRepository {
@@ -139,4 +194,8 @@ func (r *InMemoryBetRepository) GetBetByID(ctx context.Context, betID int, userU
 func (r *InMemoryBetRepository) UpdateBetClosePrice(ctx context.Context, betID int, closePrice float64, closeTime time.Time) error {
 	// In-memory repository doesn't support bet updates
 	return fmt.Errorf("bet update requires database connection")
+}
+
+func (r *InMemoryBetRepository) GetWinningBetsByUser(ctx context.Context, userUUID string) ([]domain.Bet, error) {
+	return []domain.Bet{}, nil
 }

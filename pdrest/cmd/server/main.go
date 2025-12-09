@@ -45,9 +45,11 @@ func main() {
 
 	var repo data.UserRepository
 	var userService *services.UserService
+	var ratingService *services.RatingService
 	var eventService *services.EventService
 	var rouletteService *services.RouletteService
 	var betService *services.BetService
+	var achievementService *services.AchievementService
 	authService := services.NewAuthService(cfg.JWT.SecretKey, cfg.JWT.AccessTokenTTL, cfg.JWT.RefreshTokenTTL)
 
 	// Create Google auth service
@@ -65,16 +67,18 @@ func main() {
 	}
 
 	// Try to connect to PostgreSQL database
-	db, err := database.New(cfg.GetDatabaseURL(), cfg.Database.MaxConns)
+	db, err := database.New(cfg.GetDatabaseURL())
 	if err != nil {
 		log.Printf("Warning: Failed to connect to PostgreSQL: %v", err)
 		log.Println("Falling back to in-memory repository")
 		repo = data.NewInMemoryUserRepository()
 		userService = services.NewUserService(repo)
-		// Event, roulette, and bet services require database - will return error if accessed
+		ratingService = nil
+		// Event, roulette, bet, and achievement services require database - will return error if accessed
 		eventService = nil
 		rouletteService = nil
 		betService = nil
+		achievementService = nil
 	} else {
 		defer db.Close()
 		log.Println("Successfully connected to PostgreSQL database")
@@ -84,19 +88,24 @@ func main() {
 		eventRepo := data.NewPostgresEventRepository(db.Pool)
 		rouletteRepo := data.NewPostgresRouletteRepository(db.Pool)
 		betRepo := data.NewPostgresBetRepository(db.Pool)
+		ratingRepo := data.NewPostgresRatingRepository(db.Pool)
+		achievementRepo := data.NewPostgresAchievementRepository(db.Pool)
+		prizeRepo := data.NewPostgresPrizeRepository(db.Pool)
 
 		repo = postgresRepo
 
 		// Create services
 		userService = services.NewUserService(repo)
+		ratingService = services.NewRatingService(ratingRepo, prizeRepo, betRepo)
 		eventService = services.NewEventService(eventRepo)
-		rouletteService = services.NewRouletteService(rouletteRepo, repo)
+		rouletteService = services.NewRouletteService(rouletteRepo, repo, prizeRepo, eventRepo)
 		priceProvider := services.NewPriceProvider("") // Uses Binance API by default
 		betService = services.NewBetService(betRepo, priceProvider)
+		achievementService = services.NewAchievementService(achievementRepo)
 	}
 
-	// Register HTTP handlers (eventService, rouletteService, and betService may be nil if database unavailable)
-	http.NewHTTPHandler(e, userService, eventService, rouletteService, betService, authService, googleAuthService, telegramAuthService, cfg.JWT.SecretKey, cfg.JWT.StrictMode)
+	// Register HTTP handlers (eventService, rouletteService, betService, and achievementService may be nil if database unavailable)
+	http.NewHTTPHandler(e, userService, ratingService, eventService, rouletteService, betService, achievementService, authService, googleAuthService, telegramAuthService, cfg.JWT.SecretKey, cfg.JWT.StrictMode)
 
 	// Start server
 	addr := cfg.GetAddress()

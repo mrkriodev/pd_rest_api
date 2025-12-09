@@ -58,14 +58,15 @@ type SpinResponse struct {
 
 // TakePrizeRequest represents a request to take the prize
 type TakePrizeRequest struct {
-	PreauthToken string `json:"preauth_token"`
+	PreauthToken string `json:"preauth_token,omitempty"` // Optional, will be generated from session+IP if not provided
 }
 
 // TakePrizeResponse represents the response after taking prize
 type TakePrizeResponse struct {
-	Success bool   `json:"success"`
-	Prize   string `json:"prize"`
-	Message string `json:"message"`
+	Success      bool   `json:"success"`
+	Prize        string `json:"prize"`
+	Message      string `json:"message"`
+	PreauthToken string `json:"preauth_token,omitempty"` // Returned if user was unregistered
 }
 
 // GetRouletteStatusResponse represents the current status of user's roulette

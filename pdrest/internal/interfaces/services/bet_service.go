@@ -49,7 +49,7 @@ func (s *BetService) OpenBet(ctx context.Context, userUUID string, req *domain.O
 
 	// Create bet
 	bet := &domain.Bet{
-		UserUUID:  userUUID,
+		UserID:    userUUID,
 		Side:      req.Side,
 		Sum:       req.Sum,
 		Pair:      req.Pair,

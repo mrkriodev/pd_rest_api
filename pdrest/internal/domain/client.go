@@ -1,17 +1,17 @@
 package domain
 
 type UserLastLogin struct {
-	UUID        string `json:"uuid"`
+	UserID      string `json:"userID"`
 	LastLoginAt *int64 `json:"last_login_at,omitempty"`
 }
 
 type UserProfile struct {
-	UUID     string  `json:"uuid"`
+	UserID   string  `json:"userID"`
 	Username *string `json:"username,omitempty"`
 }
 
 type User struct {
-	UUID              string  `json:"uuid"`
+	UserID            string  `json:"userID"`
 	GoogleID          *string `json:"google_id,omitempty"`
 	GoogleEmail       *string `json:"google_email,omitempty"`
 	GoogleName        *string `json:"google_name,omitempty"`

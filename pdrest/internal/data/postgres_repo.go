@@ -25,7 +25,7 @@ func (r *PostgresUserRepository) GetLastLogin(uuid string) (*domain.UserLastLogi
 	var lastLoginAt *int64
 	query := `SELECT user_uuid, last_login_at FROM users WHERE user_uuid = $1`
 
-	err := r.pool.QueryRow(ctx, query, uuid).Scan(&result.UUID, &lastLoginAt)
+	err := r.pool.QueryRow(ctx, query, uuid).Scan(&result.UserID, &lastLoginAt)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil
@@ -47,7 +47,7 @@ func (r *PostgresUserRepository) GetProfile(uuid string) (*domain.UserProfile, e
 
 	query := `SELECT user_uuid, auth_provider, google_name, telegram_username FROM users WHERE user_uuid = $1`
 
-	err := r.pool.QueryRow(ctx, query, uuid).Scan(&result.UUID, &authProvider, &googleName, &telegramUsername)
+	err := r.pool.QueryRow(ctx, query, uuid).Scan(&result.UserID, &authProvider, &googleName, &telegramUsername)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil
@@ -73,7 +73,7 @@ func (r *PostgresUserRepository) GetUserByGoogleID(googleID string) (*domain.Use
 	var result domain.User
 	query := `SELECT user_uuid, google_id, google_email, google_name FROM users WHERE google_id = $1`
 
-	err := r.pool.QueryRow(ctx, query, googleID).Scan(&result.UUID, &result.GoogleID, &result.GoogleEmail, &result.GoogleName)
+	err := r.pool.QueryRow(ctx, query, googleID).Scan(&result.UserID, &result.GoogleID, &result.GoogleEmail, &result.GoogleName)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil
@@ -90,7 +90,7 @@ func (r *PostgresUserRepository) GetUserByTelegramID(telegramID int64) (*domain.
 	var result domain.User
 	query := `SELECT user_uuid, telegram_id, telegram_username, telegram_first_name, telegram_last_name FROM users WHERE telegram_id = $1`
 
-	err := r.pool.QueryRow(ctx, query, telegramID).Scan(&result.UUID, &result.TelegramID, &result.TelegramUsername, &result.TelegramFirstName, &result.TelegramLastName)
+	err := r.pool.QueryRow(ctx, query, telegramID).Scan(&result.UserID, &result.TelegramID, &result.TelegramUsername, &result.TelegramFirstName, &result.TelegramLastName)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil

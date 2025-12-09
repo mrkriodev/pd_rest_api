@@ -4,7 +4,7 @@ import "time"
 
 type Bet struct {
 	ID         int        `json:"id"`
-	UserUUID   string     `json:"user_uuid"`
+	UserID     string     `json:"userID"`
 	Side       string     `json:"side"` // "pump" or "dump"
 	Sum        float64    `json:"sum"`
 	Pair       string     `json:"pair"`      // e.g., "ETH/USDT"

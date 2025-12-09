@@ -22,6 +22,7 @@ type RouletteRepository interface {
 	// Preauth token methods
 	CreatePreauthToken(ctx context.Context, token *domain.RoulettePreauthToken) error
 	GetPreauthToken(ctx context.Context, token string) (*domain.RoulettePreauthToken, error)
+	UpdatePreauthTokenUserUUID(ctx context.Context, token string, userUUID string) error
 	MarkPreauthTokenAsUsed(ctx context.Context, tokenID int) error
 	ValidatePreauthToken(ctx context.Context, token string) (*domain.RoulettePreauthToken, error)
 
@@ -235,6 +236,22 @@ func (r *PostgresRouletteRepository) GetPreauthToken(ctx context.Context, token 
 
 	preauthToken.UserUUID = userUUIDPtr
 	return &preauthToken, nil
+}
+
+// UpdatePreauthTokenUserUUID updates the user_uuid of a preauth token
+func (r *PostgresRouletteRepository) UpdatePreauthTokenUserUUID(ctx context.Context, token string, userUUID string) error {
+	query := `UPDATE roulette_preauth_token SET user_uuid = $1 WHERE token = $2`
+
+	result, err := r.pool.Exec(ctx, query, userUUID, token)
+	if err != nil {
+		return fmt.Errorf("failed to update preauth token user_uuid: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("preauth token not found")
+	}
+
+	return nil
 }
 
 // MarkPreauthTokenAsUsed marks a preauth token as used

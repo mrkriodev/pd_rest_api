@@ -25,7 +25,7 @@ func (r *InMemoryUserRepository) GetLastLogin(uuid string) (*domain.UserLastLogi
 	if !ok {
 		return nil, nil
 	}
-	return &domain.UserLastLogin{UUID: uuid, LastLoginAt: lastLoginAt}, nil
+	return &domain.UserLastLogin{UserID: uuid, LastLoginAt: lastLoginAt}, nil
 }
 
 func (r *InMemoryUserRepository) GetProfile(uuid string) (*domain.UserProfile, error) {

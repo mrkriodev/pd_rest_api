@@ -30,7 +30,6 @@ type DatabaseConfig struct {
 	User     string
 	Password string
 	DBName   string
-	MaxConns int
 }
 
 type WAFConfig struct {
@@ -55,6 +54,11 @@ type TelegramConfig struct {
 }
 
 func Load() *Config {
+	// Configuration loading order:
+	// 1. First, try to load .env file (loads values that don't exist in environment)
+	// 2. Then, environment variables override any values from .env file
+	// This ensures environment variables take precedence over .env file values
+
 	// Try to load .env file from multiple locations
 	envPaths := []string{
 		".env",                      // Current directory
@@ -65,8 +69,11 @@ func Load() *Config {
 
 	loaded := false
 	for _, envPath := range envPaths {
+		// godotenv.Load() does NOT override existing environment variables
+		// So: .env file sets values for vars that don't exist in environment
+		//     Environment variables that exist will remain (overriding file values)
 		if err := godotenv.Load(envPath); err == nil {
-			log.Printf("Loaded .env file from: %s", envPath)
+			log.Printf("Loaded .env file from: %s (environment variables will override .env values)", envPath)
 			loaded = true
 			break
 		}
@@ -90,7 +97,6 @@ func Load() *Config {
 			User:     getEnv("DB_USER", "postgres"),
 			Password: getEnv("DB_PASSWORD", ""),
 			DBName:   getEnv("DB_NAME", "pumpdump_db"),
-			MaxConns: getEnvAsInt("DB_MAX_CONNS", 25),
 		},
 		WAF: WAFConfig{
 			Active:              getEnvAsBool("WAF_ACTIVE", false),
@@ -157,6 +163,9 @@ func splitAndTrim(s, sep string) []string {
 	return parts
 }
 
+// getEnv retrieves environment variable value
+// Priority: environment variable > .env file > default value
+// (Environment variables override .env file values because godotenv.Load() doesn't override existing env vars)
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
