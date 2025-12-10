@@ -1,0 +1,11 @@
+services:
+  gobackend-pd:
+    image: gobackend-pd
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: on-failure:5
+    container_name: gobackend-pd
+    env_file: .env
+    ports:
+      - "172.17.0.1:8098:8080"
