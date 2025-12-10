@@ -2,47 +2,545 @@ package http
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
+	"pdrest/internal/domain"
 	"pdrest/internal/interfaces/services"
 
 	"github.com/labstack/echo/v4"
+	"gopkg.in/yaml.v3"
 )
 
 type HTTPHandler struct {
-	clientService *services.ClientService
-	eventService  *services.EventService
+	userService         *services.UserService
+	ratingService       *services.RatingService
+	eventService        *services.EventService
+	rouletteService     *services.RouletteService
+	betService          *services.BetService
+	achievementService  *services.AchievementService
+	authService         *services.AuthService
+	googleAuthService   *services.GoogleAuthService
+	telegramAuthService *services.TelegramAuthService
+	jwtSecretKey        string
+	jwtStrictMode       bool
 }
 
-func NewHTTPHandler(e *echo.Echo, clientService *services.ClientService, eventService *services.EventService) {
+func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingService *services.RatingService, eventService *services.EventService, rouletteService *services.RouletteService, betService *services.BetService, achievementService *services.AchievementService, authService *services.AuthService, googleAuthService *services.GoogleAuthService, telegramAuthService *services.TelegramAuthService, jwtSecretKey string, jwtStrictMode bool) {
 	h := &HTTPHandler{
-		clientService: clientService,
-		eventService:  eventService,
+		userService:         userService,
+		ratingService:       ratingService,
+		eventService:        eventService,
+		rouletteService:     rouletteService,
+		betService:          betService,
+		achievementService:  achievementService,
+		authService:         authService,
+		googleAuthService:   googleAuthService,
+		telegramAuthService: telegramAuthService,
+		jwtSecretKey:        jwtSecretKey,
+		jwtStrictMode:       jwtStrictMode,
 	}
 
 	api := e.Group("/api")
 	api.GET("/status", h.Status)
-	api.GET("/client_status/:id", h.ClientStatus)
 	api.GET("/available_events", h.AvailableEvents)
+	api.GET("/available_achievements", h.AvailableAchievements)
+	api.GET("/globalrating", h.GlobalRating)
+
+	// Documentation endpoints
+	api.GET("/docs", h.GetAPIDocumentation)
+	api.GET("/docs/openapi.yaml", h.GetOpenAPISpec)
+	api.GET("/docs/openapi.json", h.GetOpenAPISpecJSON)
+	api.GET("/swagger/*", h.SwaggerUI)
+
+	// Auth endpoints
+	auth := api.Group("/auth")
+	auth.POST("/refresh", h.RefreshToken)
+	auth.GET("/status", h.AuthStatus, JWTMiddleware(jwtSecretKey, jwtStrictMode))
+	googleAuth := auth.Group("/google")
+	googleAuth.GET("/verify", h.VerifyGoogleToken)
+	telegramAuth := auth.Group("/telegram")
+	telegramAuth.GET("/verify", h.VerifyTelegramToken)
+
+	// User endpoints (protected by JWT)
+	user := api.Group("/user")
+	user.Use(JWTMiddleware(jwtSecretKey, jwtStrictMode))
+	user.GET("/last_login/:uuid", h.UserLastLogin)
+	user.GET("/profile/:uuid", h.UserProfile)
+	user.GET("/assets", h.UserAssets)
+	user.GET("/referral_link", h.UserReferralLink)
+	user.GET("/friends_ratings", h.UserFriendsRatings)
+	user.GET("/achievements", h.UserAchievements)
+	user.POST("/openbet", h.OpenBet)
+	user.GET("/betstatus", h.BetStatus)
+
+	// Roulette endpoints
+	roulette := api.Group("/roulette")
+	roulette.GET("/status", h.GetRouletteStatus)
+	roulette.POST("/spin", h.Spin)
+	roulette.POST("/take-prize", h.TakePrize)
+	roulette.GET("/get_preauth_token", h.GetPreauthToken)
 }
 
 func (h *HTTPHandler) Status(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (h *HTTPHandler) ClientStatus(c echo.Context) error {
-	id, err := strconv.Atoi(c.Param("id"))
+func (h *HTTPHandler) GetAPIDocumentation(c echo.Context) error {
+	// Try to read the API documentation markdown file
+	docPath := filepath.Join("docs", "API_DOCUMENTATION.md")
+	content, err := os.ReadFile(docPath)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid id"})
+		// If file not found, return a simple text response with endpoint info
+		doc := `PD REST API Documentation
+
+Available endpoints:
+- GET /api/status - Health check
+- GET /api/available_events - Get available events
+- POST /api/auth/refresh - Refresh JWT token
+- GET /api/auth/status - Check JWT authorization status
+- GET /api/auth/google/verify - Verify Google OAuth token
+- GET /api/auth/telegram/verify - Verify Telegram Web Login
+- GET /api/user/last_login/:uuid - Get user last login time
+- GET /api/user/profile/:uuid - Get user profile
+- POST /api/user/openbet - Create a new bet
+- GET /api/user/betstatus?id=<bet_id> - Get bet status
+
+For full documentation, see: /api/docs/openapi.yaml or /api/docs/openapi.json
+`
+		c.Response().Header().Set(echo.HeaderContentType, "text/plain; charset=utf-8")
+		return c.String(http.StatusOK, doc)
 	}
 
-	status, err := h.clientService.GetStatus(id)
+	c.Response().Header().Set(echo.HeaderContentType, "text/plain; charset=utf-8")
+	return c.String(http.StatusOK, string(content))
+}
+
+func (h *HTTPHandler) GetOpenAPISpec(c echo.Context) error {
+	// Try to read the OpenAPI YAML file
+	specPath := filepath.Join("docs", "openapi.yaml")
+	content, err := os.ReadFile(specPath)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "OpenAPI specification not found"})
+	}
+
+	c.Response().Header().Set(echo.HeaderContentType, "application/x-yaml")
+	return c.String(http.StatusOK, string(content))
+}
+
+func (h *HTTPHandler) GetOpenAPISpecJSON(c echo.Context) error {
+	// Read the OpenAPI YAML file and convert to JSON
+	specPath := filepath.Join("docs", "openapi.yaml")
+	content, err := os.ReadFile(specPath)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "OpenAPI specification not found"})
+	}
+
+	// Parse YAML and convert to JSON
+	var spec map[string]interface{}
+	if err := yaml.Unmarshal(content, &spec); err != nil {
+		// If YAML parsing fails, return error
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to parse OpenAPI specification"})
+	}
+
+	return c.JSON(http.StatusOK, spec)
+}
+
+func (h *HTTPHandler) SwaggerUI(c echo.Context) error {
+	// Serve Swagger UI HTML
+	swaggerHTML := `<!DOCTYPE html>
+<html>
+<head>
+	<title>PD REST API - Swagger UI</title>
+	<link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui.css" />
+	<style>
+		html { box-sizing: border-box; overflow: -moz-scrollbars-vertical; overflow-y: scroll; }
+		*, *:before, *:after { box-sizing: inherit; }
+		body { margin:0; background: #fafafa; }
+	</style>
+</head>
+<body>
+	<div id="swagger-ui"></div>
+	<script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-bundle.js"></script>
+	<script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-standalone-preset.js"></script>
+	<script>
+		window.onload = function() {
+			const ui = SwaggerUIBundle({
+				url: "/api/docs/openapi.yaml",
+				dom_id: '#swagger-ui',
+				deepLinking: true,
+				presets: [
+					SwaggerUIBundle.presets.apis,
+					SwaggerUIStandalonePreset
+				],
+				plugins: [
+					SwaggerUIBundle.plugins.DownloadUrl
+				],
+				layout: "StandaloneLayout"
+			});
+		};
+	</script>
+</body>
+</html>`
+
+	c.Response().Header().Set(echo.HeaderContentType, "text/html; charset=utf-8")
+	return c.HTML(http.StatusOK, swaggerHTML)
+}
+
+func (h *HTTPHandler) UserLastLogin(c echo.Context) error {
+	uuid := c.Param("uuid")
+	if uuid == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "uuid is required"})
+	}
+
+	result, err := h.userService.GetLastLogin(uuid)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, status)
+	return c.JSON(http.StatusOK, result)
+}
+
+func (h *HTTPHandler) UserProfile(c echo.Context) error {
+	uuid := c.Param("uuid")
+	if uuid == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "uuid is required"})
+	}
+
+	result, err := h.userService.GetProfile(uuid)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, result)
+}
+
+func (h *HTTPHandler) UserAssets(c echo.Context) error {
+	if h.ratingService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for user assets"})
+	}
+
+	userUUID, ok := c.Get("user_uuid").(string)
+	if !ok || userUUID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	assets, err := h.ratingService.GetUserAssets(c.Request().Context(), userUUID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, assets)
+}
+
+func (h *HTTPHandler) UserReferralLink(c echo.Context) error {
+	if h.userService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for referral link"})
+	}
+
+	userUUID, ok := c.Get("user_uuid").(string)
+	if !ok || userUUID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	scheme := "http"
+	if c.IsTLS() {
+		scheme = "https"
+	}
+	host := c.Request().Host
+	referralLink := fmt.Sprintf("%s://%s/ref/%s", scheme, host, userUUID)
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"referral_link": referralLink,
+		"code":          userUUID,
+	})
+}
+
+func (h *HTTPHandler) UserFriendsRatings(c echo.Context) error {
+	if h.ratingService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for friends ratings"})
+	}
+
+	// Get user UUID from context (set by JWT middleware)
+	userUUID, ok := c.Get("user_uuid").(string)
+	if !ok || userUUID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	// Parse pagination parameters
+	limit := 50 // Default limit
+	if limitStr := c.QueryParam("limit"); limitStr != "" {
+		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+			limit = parsedLimit
+		}
+	}
+
+	offset := 0 // Default offset
+	if offsetStr := c.QueryParam("offset"); offsetStr != "" {
+		if parsedOffset, err := strconv.Atoi(offsetStr); err == nil && parsedOffset >= 0 {
+			offset = parsedOffset
+		}
+	}
+
+	result, err := h.ratingService.GetFriendsRatings(c.Request().Context(), userUUID, limit, offset)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"friends": result,
+	})
+}
+
+func (h *HTTPHandler) GlobalRating(c echo.Context) error {
+	if h.ratingService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for global rating"})
+	}
+
+	// Parse pagination parameters
+	limit := 50 // Default limit
+	if limitStr := c.QueryParam("limit"); limitStr != "" {
+		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+			limit = parsedLimit
+		}
+	}
+
+	offset := 0 // Default offset
+	if offsetStr := c.QueryParam("offset"); offsetStr != "" {
+		if parsedOffset, err := strconv.Atoi(offsetStr); err == nil && parsedOffset >= 0 {
+			offset = parsedOffset
+		}
+	}
+
+	entries, err := h.ratingService.GetGlobalRating(c.Request().Context(), limit, offset)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, entries)
+}
+
+func (h *HTTPHandler) OpenBet(c echo.Context) error {
+	if h.betService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for bets"})
+	}
+
+	// Get user UUID from context (set by JWT middleware)
+	userUUID, ok := c.Get("user_uuid").(string)
+	if !ok || userUUID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	var req domain.OpenBetRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	ctx := context.Background()
+	response, err := h.betService.OpenBet(ctx, userUUID, &req)
+	if err != nil {
+		if strings.Contains(err.Error(), "must be") || strings.Contains(err.Error(), "required") {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
+func (h *HTTPHandler) BetStatus(c echo.Context) error {
+	if h.betService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for bets"})
+	}
+
+	// Get user UUID from context (set by JWT middleware)
+	userUUID, ok := c.Get("user_uuid").(string)
+	if !ok || userUUID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	// Get bet ID from query parameter
+	betIDStr := c.QueryParam("id")
+	if betIDStr == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id query parameter is required"})
+	}
+
+	var betID int
+	if _, err := fmt.Sscanf(betIDStr, "%d", &betID); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid bet id"})
+	}
+
+	ctx := context.Background()
+	response, err := h.betService.GetBetStatus(ctx, betID, userUUID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
+func (h *HTTPHandler) RefreshToken(c echo.Context) error {
+	var req struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	if req.RefreshToken == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "refresh_token is required"})
+	}
+
+	tokenPair, err := h.authService.RefreshToken(req.RefreshToken)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, tokenPair)
+}
+
+func (h *HTTPHandler) AuthStatus(c echo.Context) error {
+	// Get user UUID from context (set by JWT middleware)
+	userUUID, ok := c.Get("user_uuid").(string)
+	if !ok || userUUID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"userID": userUUID})
+}
+
+func (h *HTTPHandler) VerifyGoogleToken(c echo.Context) error {
+	if h.googleAuthService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "Google authentication service unavailable"})
+	}
+
+	// Get Google token from Authorization header
+	authHeader := c.Request().Header.Get("Authorization")
+	if authHeader == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing authorization header"})
+	}
+
+	// Extract token from "Bearer <token>"
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || parts[0] != "Bearer" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid authorization header format"})
+	}
+
+	googleToken := parts[1]
+
+	// Get optional preauth_token from header or query parameter
+	preauthToken := c.Request().Header.Get("X-Preauth-Token")
+	if preauthToken == "" {
+		preauthToken = c.QueryParam("preauth_token")
+	}
+
+	// Validate Google token
+	googleUserInfo, err := h.googleAuthService.ValidateWithGoogle(googleToken)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
+
+	// Find user by Google ID
+	user, err := h.userService.GetUserByGoogleID(googleUserInfo.ID)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "user not found"})
+	}
+
+	// Link preauth token to user if provided
+	if preauthToken != "" && h.rouletteService != nil {
+		ctx := context.Background()
+		if err := h.rouletteService.LinkPreauthTokenToUser(ctx, preauthToken, user.UserID); err != nil {
+			// Log error but don't fail the auth request
+			_ = err
+		}
+	}
+
+	// Generate JWT token pair for the user
+	tokenPair, err := h.authService.GenerateTokenPair(user.UserID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate token"})
+	}
+
+	return c.JSON(http.StatusOK, tokenPair)
+}
+
+func (h *HTTPHandler) VerifyTelegramToken(c echo.Context) error {
+	if h.telegramAuthService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "Telegram authentication service unavailable"})
+	}
+
+	// Get optional preauth_token from header or query parameter
+	preauthToken := c.Request().Header.Get("X-Preauth-Token")
+	if preauthToken == "" {
+		preauthToken = c.QueryParam("preauth_token")
+	}
+
+	// Telegram Web Login sends data as query parameters
+	var authData services.TelegramAuthData
+
+	// Parse ID
+	if idStr := c.QueryParam("id"); idStr != "" {
+		if id, err := strconv.ParseInt(idStr, 10, 64); err == nil {
+			authData.ID = id
+		}
+	}
+
+	// Parse auth_date
+	if authDateStr := c.QueryParam("auth_date"); authDateStr != "" {
+		if authDate, err := strconv.ParseInt(authDateStr, 10, 64); err == nil {
+			authData.AuthDate = authDate
+		}
+	}
+
+	authData.FirstName = c.QueryParam("first_name")
+	authData.LastName = c.QueryParam("last_name")
+	authData.Username = c.QueryParam("username")
+	authData.PhotoURL = c.QueryParam("photo_url")
+	authData.Hash = c.QueryParam("hash")
+
+	// If no query params, try JSON body
+	if authData.ID == 0 && authData.Hash == "" {
+		if err := c.Bind(&authData); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body or missing query parameters"})
+		}
+	}
+
+	// Validate Telegram token
+	telegramUserInfo, err := h.telegramAuthService.ValidateWithTelegram(authData)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
+
+	// Find user by Telegram ID
+	user, err := h.userService.GetUserByTelegramID(telegramUserInfo.ID)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "user not found"})
+	}
+
+	// Link preauth token to user if provided
+	if preauthToken != "" && h.rouletteService != nil {
+		ctx := context.Background()
+		if err := h.rouletteService.LinkPreauthTokenToUser(ctx, preauthToken, user.UserID); err != nil {
+			// Log error but don't fail the auth request
+			_ = err
+		}
+	}
+
+	// Generate JWT token pair for the user
+	tokenPair, err := h.authService.GenerateTokenPair(user.UserID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate token"})
+	}
+
+	return c.JSON(http.StatusOK, tokenPair)
 }
 
 func (h *HTTPHandler) AvailableEvents(c echo.Context) error {
@@ -58,5 +556,214 @@ func (h *HTTPHandler) AvailableEvents(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"events": events,
+	})
+}
+
+func (h *HTTPHandler) AvailableAchievements(c echo.Context) error {
+	if h.achievementService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for achievements"})
+	}
+
+	ctx := context.Background()
+	result, err := h.achievementService.GetAvailableAchievements(ctx)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, result)
+}
+
+func (h *HTTPHandler) UserAchievements(c echo.Context) error {
+	if h.achievementService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for user achievements"})
+	}
+
+	// Get user UUID from context (set by JWT middleware)
+	userUUID, ok := c.Get("user_uuid").(string)
+	if !ok || userUUID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	ctx := context.Background()
+	result, err := h.achievementService.GetUserAchievements(ctx, userUUID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, result)
+}
+
+// GetRouletteStatus gets the current status of roulette by preauth token
+func (h *HTTPHandler) GetRouletteStatus(c echo.Context) error {
+	if h.rouletteService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for roulette"})
+	}
+
+	// Get preauth token from query parameter or header
+	preauthToken := c.QueryParam("preauth_token")
+	if preauthToken == "" {
+		preauthToken = c.Request().Header.Get("X-Preauth-Token")
+	}
+	if preauthToken == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "preauth_token is required (query parameter or X-Preauth-Token header)"})
+	}
+
+	ctx := context.Background()
+	status, err := h.rouletteService.GetRouletteStatus(ctx, preauthToken)
+	if err != nil {
+		if strings.Contains(err.Error(), "invalid") || strings.Contains(err.Error(), "expired") {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, status)
+}
+
+// Spin performs a spin using preauth token
+func (h *HTTPHandler) Spin(c echo.Context) error {
+	if h.rouletteService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for roulette"})
+	}
+
+	var req domain.SpinRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	if req.PreauthToken == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "preauth_token is required"})
+	}
+
+	ctx := context.Background()
+	response, err := h.rouletteService.Spin(ctx, &req)
+	if err != nil {
+		// Check if it's a business logic error (should return 400) or server error (500)
+		if strings.Contains(err.Error(), "invalid") ||
+			strings.Contains(err.Error(), "already") ||
+			strings.Contains(err.Error(), "maximum") ||
+			strings.Contains(err.Error(), "not found") ||
+			strings.Contains(err.Error(), "expired") {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
+// TakePrize allows user to take the prize after completing all spins
+func (h *HTTPHandler) TakePrize(c echo.Context) error {
+	if h.rouletteService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for roulette"})
+	}
+
+	var req domain.TakePrizeRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	// Extract session_id and IP address (required if preauth_token is not provided)
+	sessionID := c.Request().Header.Get("X-SESSION-ID")
+	if sessionID == "" {
+		cookie, err := c.Cookie("X-SESSION-ID")
+		if err == nil && cookie != nil && cookie.Value != "" {
+			sessionID = cookie.Value
+		}
+	}
+
+	// Get client IP
+	ipAddress := c.Request().Header.Get("X-Forwarded-For")
+	if ipAddress == "" {
+		ipAddress = c.Request().Header.Get("X-Real-IP")
+	}
+	if ipAddress == "" {
+		ipAddress = c.RealIP()
+	}
+
+	// If preauth_token is not provided, session_id and IP are required
+	if req.PreauthToken == "" {
+		if sessionID == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "preauth_token is required, or X-SESSION-ID header/cookie must be provided"})
+		}
+		if ipAddress == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "preauth_token is required, or IP address must be available"})
+		}
+	}
+
+	// Create context with session_id and IP for internal registration and token generation
+	ctx := context.Background()
+	if sessionID != "" {
+		ctx = context.WithValue(ctx, "session_id", sessionID)
+	}
+	if ipAddress != "" {
+		ctx = context.WithValue(ctx, "ip_address", ipAddress)
+	}
+
+	response, err := h.rouletteService.TakePrize(ctx, &req)
+	if err != nil {
+		// Check if it's a business logic error (should return 400) or server error (500)
+		if strings.Contains(err.Error(), "invalid") ||
+			strings.Contains(err.Error(), "already") ||
+			strings.Contains(err.Error(), "must complete") ||
+			strings.Contains(err.Error(), "not found") ||
+			strings.Contains(err.Error(), "expired") ||
+			strings.Contains(err.Error(), "required") {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
+// GetPreauthToken gets or creates a preauth token for on_start roulette
+// Only for unauthenticated users, based on X-SESSION-ID and IP address
+func (h *HTTPHandler) GetPreauthToken(c echo.Context) error {
+	if h.rouletteService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for roulette"})
+	}
+
+	// Check if user is authenticated - this endpoint is only for unauthenticated users
+	_, ok := c.Get("user_uuid").(string)
+	if ok {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "this endpoint is only for unauthenticated users"})
+	}
+
+	// Get session ID from header or cookie
+	sessionID := c.Request().Header.Get("X-SESSION-ID")
+	if sessionID == "" {
+		cookie, err := c.Cookie("X-SESSION-ID")
+		if err == nil && cookie != nil && cookie.Value != "" {
+			sessionID = cookie.Value
+		}
+	}
+	if sessionID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "X-SESSION-ID header or cookie is required"})
+	}
+
+	// Get client IP
+	ipAddress := c.Request().Header.Get("X-Forwarded-For")
+	if ipAddress == "" {
+		ipAddress = c.Request().Header.Get("X-Real-IP")
+	}
+	if ipAddress == "" {
+		ipAddress = c.RealIP()
+	}
+	if ipAddress == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "could not determine IP address"})
+	}
+
+	ctx := context.Background()
+	token, err := h.rouletteService.GetPreauthToken(ctx, sessionID, ipAddress)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "inactive") {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"preauth_token": token,
 	})
 }

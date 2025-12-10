@@ -15,9 +15,9 @@ CREATE TABLE IF NOT EXISTS all_events (
 );
 
 -- Create indexes for better query performance
-CREATE INDEX IF NOT EXISTS idx_all_events_id ON all_events(id);
-CREATE INDEX IF NOT EXISTS idx_all_events_deadline ON all_events(deadline);
-CREATE INDEX IF NOT EXISTS idx_all_events_tags ON all_events(tags);
+-- CREATE INDEX IF NOT EXISTS idx_all_events_id ON all_events(id);
+-- CREATE INDEX IF NOT EXISTS idx_all_events_deadline ON all_events(deadline);
+-- CREATE INDEX IF NOT EXISTS idx_all_events_tags ON all_events(tags);
 
 -- Example insert (for testing)
 -- Note: deadline is Unix timestamp in milliseconds (UTC)

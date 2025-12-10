@@ -13,14 +13,13 @@ type DB struct {
 }
 
 // New creates a new database connection pool
-func New(databaseURL string, maxConns int) (*DB, error) {
+func New(databaseURL string) (*DB, error) {
 	config, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse database URL: %w", err)
 	}
 
-	// Configure connection pool
-	config.MaxConns = int32(maxConns)
+	// Configure connection pool (using pgxpool defaults for MaxConns)
 	config.MinConns = 2
 	config.MaxConnLifetime = time.Hour
 	config.MaxConnIdleTime = time.Minute * 30

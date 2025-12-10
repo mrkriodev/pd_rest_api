@@ -1,0 +1,895 @@
+openapi: 3.1.0
+info:
+  title: PD REST API
+  description: REST API server with PostgreSQL database support
+  version: 1.0.0
+  contact:
+    name: API Support
+
+servers:
+  - url: http://localhost:8080/api
+    description: Local development server
+
+paths:
+  /status:
+    get:
+      summary: Health check
+      tags:
+        - Health
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    examples:
+                      - ok
+
+  /available_events:
+    get:
+      summary: Get available events
+      tags:
+        - Events
+      responses:
+        '200':
+          description: List of events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+
+  /available_achievements:
+    get:
+      summary: Get available achievements
+      tags:
+        - Achievements
+      responses:
+        '200':
+          description: List of achievements
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AchievementsResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /globalrating:
+    get:
+      summary: Get global rating (top users by points)
+      tags:
+        - Rating
+      responses:
+        '200':
+          description: Global rating list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GlobalRatingEntry'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /auth/refresh:
+    post:
+      summary: Refresh JWT token
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refresh_token
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: Token pair
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/status:
+    get:
+      summary: Check JWT authorization status
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User ID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userID:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/google/verify:
+    get:
+      summary: Verify Google OAuth token
+      tags:
+        - Authentication
+      security:
+        - GoogleAuth: []
+      parameters:
+        - name: preauth_token
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional preauth token to link to user after successful authentication (can also be provided via X-Preauth-Token header)
+        - name: X-Preauth-Token
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Optional preauth token to link to user after successful authentication
+      responses:
+        '200':
+          description: JWT token pair
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/telegram/verify:
+    get:
+      summary: Verify Telegram Web Login
+      tags:
+        - Authentication
+      parameters:
+        - name: id
+          in: query
+          schema:
+            type: string
+        - name: first_name
+          in: query
+          schema:
+            type: string
+        - name: last_name
+          in: query
+          schema:
+            type: string
+        - name: username
+          in: query
+          schema:
+            type: string
+        - name: photo_url
+          in: query
+          schema:
+            type: string
+        - name: auth_date
+          in: query
+          schema:
+            type: string
+        - name: hash
+          in: query
+          schema:
+            type: string
+        - name: preauth_token
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional preauth token to link to user after successful authentication (can also be provided via X-Preauth-Token header)
+        - name: X-Preauth-Token
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Optional preauth token to link to user after successful authentication
+      responses:
+        '200':
+          description: JWT token pair
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /user/last_login/{uuid}:
+    get:
+      summary: Get user last login time
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Last login info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserLastLogin'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /user/profile/{uuid}:
+    get:
+      summary: Get user profile
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /user/assets:
+    get:
+      summary: Get user assets (points)
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Aggregated user points
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserAssets'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /user/referral_link:
+    get:
+      summary: Get referral link for the authenticated user
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Referral link and code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferralLinkResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /user/friends_ratings:
+    get:
+      summary: Get friends ratings (referrals aggregated points)
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Friends ratings (referrals sorted by points)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FriendsRatingsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /user/achievements:
+    get:
+      summary: Get user achievements
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User achievements
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserAchievementsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /user/openbet:
+    post:
+      summary: Create a new bet
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenBetRequest'
+      responses:
+        '200':
+          description: Bet created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenBetResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /user/betstatus:
+    get:
+      summary: Get bet status
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Bet status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BetStatusResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /roulette/status:
+    get:
+      summary: Get roulette status
+      tags:
+        - Roulette
+      parameters:
+        - name: preauth_token
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Preauth token (can also be provided via X-Preauth-Token header)
+      responses:
+        '200':
+          description: Roulette status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetRouletteStatusResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /roulette/spin:
+    post:
+      summary: Perform a roulette spin
+      tags:
+        - Roulette
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SpinRequest'
+      responses:
+        '200':
+          description: Spin result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpinResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /roulette/take-prize:
+    post:
+      summary: Take prize after completing all spins
+      description: |
+        Takes the prize after completing all spins. If preauth_token is not provided,
+        it will be generated from X-SESSION-ID and IP address. A user will be created
+        if X-SESSION-ID and IP are provided but the user doesn't exist.
+        Returns preauth_token in response if the user was unregistered.
+      tags:
+        - Roulette
+      parameters:
+        - name: X-SESSION-ID
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Session ID (required if preauth_token is not provided, can also be provided via X-SESSION-ID cookie)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TakePrizeRequest'
+      responses:
+        '200':
+          description: Prize taken successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TakePrizeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /roulette/get_preauth_token:
+    get:
+      summary: Get or create a preauth token for on_start roulette
+      description: |
+        Gets or creates a preauth token for on_start roulette based on X-SESSION-ID and IP address.
+        Only available for unauthenticated users. If a token already exists for the session+IP combination,
+        it returns the existing token. Otherwise, creates a new one.
+      tags:
+        - Roulette
+      parameters:
+        - name: X-SESSION-ID
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Session ID (can also be provided via X-SESSION-ID cookie)
+      responses:
+        '200':
+          description: Preauth token (existing or newly created)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  preauth_token:
+                    type: string
+                    description: The preauth token for roulette
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    GoogleAuth:
+      type: http
+      scheme: bearer
+      description: Google OAuth token
+
+  schemas:
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+        badge:
+          type: string
+        title:
+          type: string
+        desc:
+          type: string
+        deadline:
+          type: string
+          format: date-time
+        tags:
+          type: string
+        reward:
+          type: array
+        info:
+          type: string
+
+    TokenPair:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+
+    UserLastLogin:
+      type: object
+      properties:
+        userID:
+          type: string
+        last_login_at:
+          type: integer
+          nullable: true
+
+    UserProfile:
+      type: object
+      properties:
+        userID:
+          type: string
+        username:
+          type: string
+          nullable: true
+
+    RatingTotals:
+      type: object
+      properties:
+        from_event:
+          type: integer
+        bet_bonus:
+          type: integer
+        promo_bonus:
+          type: integer
+        servivce_bonus:
+          type: integer
+
+    UserAssets:
+      type: object
+      properties:
+        userID:
+          type: string
+        points:
+          $ref: '#/components/schemas/RatingTotals'
+        total_points:
+          type: integer
+
+    GlobalRatingEntry:
+      type: object
+      properties:
+        userID:
+          type: string
+          description: User ID (empty string if user is not authenticated)
+        value:
+          type: integer
+          format: int64
+          description: Total points for the user
+
+    ReferralLinkResponse:
+      type: object
+      properties:
+        referral_link:
+          type: string
+          description: Absolute referral link containing the user's code
+        code:
+          type: string
+          description: Referral code (user UUID)
+
+    FriendRatingEntry:
+      type: object
+      properties:
+        userId:
+          type: string
+          description: Referred user ID
+        value:
+          type: integer
+          format: int64
+          description: Total points for the referred user
+
+    FriendsRatingsResponse:
+      type: object
+      properties:
+        friends:
+          type: array
+          items:
+            $ref: '#/components/schemas/FriendRatingEntry'
+
+    Achievement:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique achievement identifier
+        badge:
+          type: string
+          description: Badge name/category
+        title:
+          type: string
+          description: Achievement title
+        imageUrl:
+          type: string
+          description: URL to achievement image/icon
+        desc:
+          type: string
+          description: Achievement description
+        tags:
+          type: string
+          description: Tags for filtering (e.g., "global")
+        summ:
+          type: number
+          format: double
+          description: Reward sum/amount
+        steps:
+          type: integer
+          description: Number of steps required
+        stepDesc:
+          type: string
+          description: Description of steps required
+
+    AchievementsResponse:
+      type: object
+      properties:
+        achievements:
+          type: array
+          items:
+            $ref: '#/components/schemas/Achievement'
+
+    UserAchievementsResponse:
+      type: object
+      properties:
+        achievements:
+          type: array
+          items:
+            $ref: '#/components/schemas/Achievement'
+
+    OpenBetRequest:
+      type: object
+      required:
+        - side
+        - sum
+        - pair
+        - timeframe
+        - openPrice
+        - openTime
+      properties:
+        side:
+          type: string
+          enum: [pump, dump]
+        sum:
+          type: number
+          minimum: 0
+        pair:
+          type: string
+          examples:
+            - ETH/USDT
+        timeframe:
+          type: integer
+          description: Timeframe in seconds
+          minimum: 1
+        openPrice:
+          type: number
+          minimum: 0
+        openTime:
+          type: string
+          format: date-time
+
+    OpenBetResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+
+    BetStatusResponse:
+      type: object
+      properties:
+        side:
+          type: string
+          enum: [pump, dump]
+        sum:
+          type: number
+        pair:
+          type: string
+        timeframe:
+          type: integer
+        openPrice:
+          type: number
+        closePrice:
+          type: number
+          nullable: true
+
+    SpinRequest:
+      type: object
+      required:
+        - preauth_token
+      properties:
+        preauth_token:
+          type: string
+          description: Preauth token for roulette session
+
+    SpinResponse:
+      type: object
+      properties:
+        roulette:
+          $ref: '#/components/schemas/Roulette'
+        remaining_spins:
+          type: integer
+          description: Number of remaining spins
+        can_spin:
+          type: boolean
+          description: Whether user can perform another spin
+
+    TakePrizeRequest:
+      type: object
+      properties:
+        preauth_token:
+          type: string
+          description: Optional preauth token for roulette session. If not provided, will be generated from X-SESSION-ID and IP address.
+
+    TakePrizeResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        prize:
+          type: string
+        message:
+          type: string
+        preauth_token:
+          type: string
+          description: Preauth token returned if user was unregistered (had no user_uuid linked to the preauth token)
+
+    GetRouletteStatusResponse:
+      type: object
+      properties:
+        roulette:
+          $ref: '#/components/schemas/Roulette'
+          nullable: true
+        config:
+          $ref: '#/components/schemas/RouletteConfig'
+          nullable: true
+        remaining_spins:
+          type: integer
+          description: Number of remaining spins
+        can_spin:
+          type: boolean
+          description: Whether user can perform a spin
+        prize_taken:
+          type: boolean
+          description: Whether the prize has been taken
+
+    RouletteConfig:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [on_start, during_event]
+        event_id:
+          type: string
+          nullable: true
+          description: Required for during_event type, null for on_start
+        max_spins:
+          type: integer
+        is_active:
+          type: boolean
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+
+    Roulette:
+      type: object
+      properties:
+        id:
+          type: integer
+        roulette_config_id:
+          type: integer
+        preauth_token_id:
+          type: integer
+        spin_number:
+          type: integer
+        prize:
+          type: string
+          nullable: true
+        prize_taken:
+          type: boolean
+        spin_result:
+          type: object
+          additionalProperties: true
+          nullable: true
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+        prize_taken_at:
+          type: integer
+          format: int64
+          nullable: true
+
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+
+    ServiceUnavailable:
+      description: Service unavailable
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+
