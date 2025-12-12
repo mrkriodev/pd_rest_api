@@ -6,24 +6,36 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/rand"
 	"pdrest/internal/data"
 	"pdrest/internal/domain"
+	"strings"
 	"time"
 )
 
 type RouletteService struct {
-	repo      data.RouletteRepository
-	userRepo  data.UserRepository
-	prizeRepo data.PrizeRepository
-	eventRepo data.EventRepository
+	repo           data.RouletteRepository
+	userRepo       data.UserRepository
+	prizeRepo      data.PrizeRepository
+	prizeValueRepo data.PrizeValueRepository
+	eventRepo      data.EventRepository
 }
 
-func NewRouletteService(r data.RouletteRepository, userRepo data.UserRepository, prizeRepo data.PrizeRepository, eventRepo data.EventRepository) *RouletteService {
+type ContextKey string
+
+const (
+	ContextKeyAuthHeader ContextKey = "auth_header"
+	ContextKeySessionID  ContextKey = "session_id"
+	ContextKeyIPAddress  ContextKey = "ip_address"
+)
+
+func NewRouletteService(r data.RouletteRepository, userRepo data.UserRepository, prizeRepo data.PrizeRepository, prizeValueRepo data.PrizeValueRepository, eventRepo data.EventRepository) *RouletteService {
 	return &RouletteService{
-		repo:      r,
-		userRepo:  userRepo,
-		prizeRepo: prizeRepo,
-		eventRepo: eventRepo,
+		repo:           r,
+		userRepo:       userRepo,
+		prizeRepo:      prizeRepo,
+		prizeValueRepo: prizeValueRepo,
+		eventRepo:      eventRepo,
 	}
 }
 
@@ -81,12 +93,69 @@ func (s *RouletteService) GetRouletteStatus(ctx context.Context, preauthToken st
 	return response, nil
 }
 
+// GetRouletteConfigByID returns roulette config by id
+func (s *RouletteService) GetRouletteConfigByID(ctx context.Context, id int) (*domain.RouletteConfig, error) {
+	if id <= 0 {
+		return nil, errors.New("invalid roulette id")
+	}
+	return s.repo.GetRouletteConfigByID(ctx, id)
+}
+
 // Spin performs a spin using preauth token
-func (s *RouletteService) Spin(ctx context.Context, req *domain.SpinRequest) (*domain.SpinResponse, error) {
-	// Validate preauth token
-	preauthToken, err := s.repo.ValidatePreauthToken(ctx, req.PreauthToken)
-	if err != nil {
-		return nil, fmt.Errorf("invalid preauth token: %w", err)
+func (s *RouletteService) Spin(ctx context.Context, preauthTokenStr string, req *domain.SpinRequest) (*domain.SpinResponse, error) {
+	var preauthToken *domain.RoulettePreauthToken
+	var err error
+
+	// Get session_id and IP from context
+	sessionID, hasSessionID := ctx.Value(ContextKeySessionID).(string)
+	ipAddress, hasIPAddress := ctx.Value(ContextKeyIPAddress).(string)
+
+	// If preauth_token is not provided, generate it from session_id + IP
+	if preauthTokenStr == "" {
+		if !hasSessionID || !hasIPAddress {
+			return nil, errors.New("preauth_token is required, or X-SESSION-ID and IP address must be provided")
+		}
+
+		// Generate token from session_id + IP (same logic as GetPreauthToken)
+		token := generateTokenFromSessionAndIP(sessionID, ipAddress)
+
+		// Get or create preauth token
+		preauthToken, err = s.repo.GetPreauthToken(ctx, token)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get preauth token: %w", err)
+		}
+		
+		// If token doesn't exist, create it
+		if preauthToken == nil {
+			// Get active on_start config (references startup event)
+			config, err := s.repo.GetRouletteConfigByType(ctx, domain.RouletteTypeOnStart, "startup")
+			if err != nil {
+				return nil, fmt.Errorf("failed to get roulette config: %w", err)
+			}
+			if config == nil || !config.IsActive {
+				return nil, errors.New("roulette config not found or inactive")
+			}
+
+			// Create new preauth token (no user_uuid, expires far in the future - 10 years)
+			expiresAt := time.Now().Add(10 * 365 * 24 * time.Hour).UnixMilli()
+			preauthToken = &domain.RoulettePreauthToken{
+				Token:            token,
+				UserUUID:         nil, // Always nil for unauthenticated users
+				RouletteConfigID: config.ID,
+				IsUsed:           false,
+				ExpiresAt:        expiresAt,
+			}
+
+			if err := s.repo.CreatePreauthToken(ctx, preauthToken); err != nil {
+				return nil, fmt.Errorf("failed to create preauth token: %w", err)
+			}
+		}
+	} else {
+		// Validate provided preauth token
+		preauthToken, err = s.repo.ValidatePreauthToken(ctx, preauthTokenStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid preauth token: %w", err)
+		}
 	}
 
 	// Get config
@@ -96,6 +165,19 @@ func (s *RouletteService) Spin(ctx context.Context, req *domain.SpinRequest) (*d
 	}
 	if config == nil || !config.IsActive {
 		return nil, errors.New("roulette config not found or inactive")
+	}
+
+	// Validate roulette_id matches config
+	if req.RouletteID != 0 && req.RouletteID != config.ID {
+		return nil, errors.New("invalid roulette_id for provided preauth_token")
+	}
+
+	// If roulette is during_event, Authorization header is required
+	if config.Type == domain.RouletteTypeDuringEvent {
+		authHeader, _ := ctx.Value(ContextKeyAuthHeader).(string)
+		if strings.TrimSpace(authHeader) == "" {
+			return nil, errors.New("authorization is required for event roulette")
+		}
 	}
 
 	// Get or create roulette
@@ -142,29 +224,88 @@ func (s *RouletteService) Spin(ctx context.Context, req *domain.SpinRequest) (*d
 		return nil, fmt.Errorf("failed to mark preauth token as used: %w", err)
 	}
 
+	// Use event ID from config (always set, references startup for on_start, specific event for during_event)
+	eventID := config.EventID
+
+	// Get prize values for the event
+	if s.prizeValueRepo == nil {
+		return nil, errors.New("prize value repository is not initialized")
+	}
+
+	prizeValues, err := s.prizeValueRepo.GetPrizeValuesByEventID(ctx, eventID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get prize values: %w", err)
+	}
+
+	if len(prizeValues) == 0 {
+		return nil, fmt.Errorf("no prize values configured for event: %s", eventID)
+	}
+
+	// Randomly select one prize value
+	rand.Seed(time.Now().UnixNano())
+	selectedPrizeValue := &prizeValues[rand.Intn(len(prizeValues))]
+
+	// Store selected prize in spin_result
+	if roulette.SpinResult == nil {
+		roulette.SpinResult = make(map[string]interface{})
+	}
+	roulette.SpinResult["prize_value_id"] = selectedPrizeValue.ID
+	roulette.SpinResult["prize_value"] = selectedPrizeValue.Value // Now int64 (points)
+	roulette.SpinResult["prize_label"] = selectedPrizeValue.Label
+	if selectedPrizeValue.SegmentID != nil {
+		roulette.SpinResult["segment_id"] = *selectedPrizeValue.SegmentID
+	}
+
+	// Also store in prize field (will be used when taking prize)
+	// Convert int64 to string for storage in Prize field (which is still string in domain)
+	prizeValueStr := fmt.Sprintf("%d", selectedPrizeValue.Value)
+	roulette.Prize = &prizeValueStr
+
+	// Update roulette with selected prize
+	if err := s.repo.UpdateRoulette(ctx, roulette); err != nil {
+		return nil, fmt.Errorf("failed to update roulette with prize: %w", err)
+	}
+
 	// Calculate remaining spins
 	remainingSpins := config.MaxSpins - roulette.SpinNumber
-	canSpin := remainingSpins > 0 && !roulette.PrizeTaken
+	if remainingSpins < 0 {
+		remainingSpins = 0
+	}
+
+	// Build frontend-friendly response
+	segmentID := "1"
+	if selectedPrizeValue.SegmentID != nil {
+		segmentID = *selectedPrizeValue.SegmentID
+	}
+
+	result := domain.SpinResult{
+		SegmentID: segmentID,
+		Label:     selectedPrizeValue.Label,
+	}
+	reward := domain.SpinReward{
+		Type:   "eth",
+		Amount: float64(selectedPrizeValue.Value) / 1e9, // Convert points to ETH (1 ETH = 10^9 points)
+	}
 
 	return &domain.SpinResponse{
-		Roulette:       roulette,
-		RemainingSpins: remainingSpins,
-		CanSpin:        canSpin,
+		Result:    result,
+		SpinsLeft: remainingSpins,
+		Reward:    reward,
 	}, nil
 }
 
 // TakePrize allows user to take the prize after completing all spins
-func (s *RouletteService) TakePrize(ctx context.Context, req *domain.TakePrizeRequest) (*domain.TakePrizeResponse, error) {
+func (s *RouletteService) TakePrize(ctx context.Context, preauthTokenStr string, req *domain.TakePrizeRequest) (*domain.TakePrizeResponse, error) {
 	var preauthToken *domain.RoulettePreauthToken
 	var err error
 	var wasUnregistered bool
 
 	// Get session_id and IP from context
-	sessionID, hasSessionID := ctx.Value("session_id").(string)
-	ipAddress, hasIPAddress := ctx.Value("ip_address").(string)
+	sessionID, hasSessionID := ctx.Value(ContextKeySessionID).(string)
+	ipAddress, hasIPAddress := ctx.Value(ContextKeyIPAddress).(string)
 
 	// If preauth_token is not provided, generate it from session_id + IP
-	if req.PreauthToken == "" {
+	if preauthTokenStr == "" {
 		if !hasSessionID || !hasIPAddress {
 			return nil, errors.New("preauth_token is required, or X-SESSION-ID and IP address must be provided")
 		}
@@ -180,8 +321,8 @@ func (s *RouletteService) TakePrize(ctx context.Context, req *domain.TakePrizeRe
 
 		// If token doesn't exist, create it
 		if preauthToken == nil {
-			// Get active on_start config (no event_id)
-			config, err := s.repo.GetRouletteConfigByType(ctx, domain.RouletteTypeOnStart, nil)
+			// Get active on_start config (references startup event)
+			config, err := s.repo.GetRouletteConfigByType(ctx, domain.RouletteTypeOnStart, "startup")
 			if err != nil {
 				return nil, fmt.Errorf("failed to get roulette config: %w", err)
 			}
@@ -216,7 +357,7 @@ func (s *RouletteService) TakePrize(ctx context.Context, req *domain.TakePrizeRe
 		}
 	} else {
 		// Validate provided preauth token
-		preauthToken, err = s.repo.ValidatePreauthToken(ctx, req.PreauthToken)
+		preauthToken, err = s.repo.ValidatePreauthToken(ctx, preauthTokenStr)
 		if err != nil {
 			return nil, fmt.Errorf("invalid preauth token: %w", err)
 		}
@@ -240,6 +381,19 @@ func (s *RouletteService) TakePrize(ctx context.Context, req *domain.TakePrizeRe
 	}
 	if config == nil || !config.IsActive {
 		return nil, errors.New("roulette config not found or inactive")
+	}
+
+	// Validate roulette_id matches config
+	if req.RouletteID != 0 && req.RouletteID != config.ID {
+		return nil, errors.New("invalid roulette_id for provided preauth_token")
+	}
+
+	// If roulette is during_event, Authorization header is required
+	if config.Type == domain.RouletteTypeDuringEvent {
+		authHeader, _ := ctx.Value(ContextKeyAuthHeader).(string)
+		if strings.TrimSpace(authHeader) == "" {
+			return nil, errors.New("authorization is required for event roulette")
+		}
 	}
 
 	// Get roulette
@@ -273,27 +427,76 @@ func (s *RouletteService) TakePrize(ctx context.Context, req *domain.TakePrizeRe
 		return nil, fmt.Errorf("must complete all %d spins before taking prize", config.MaxSpins)
 	}
 
-	// Determine prize based on event or default
-	prizeValue, prizeType, err := s.determinePrize(ctx, config, roulette)
-	if err != nil {
-		return nil, fmt.Errorf("failed to determine prize: %w", err)
+	// Get prize value from roulette (stored during spin)
+	var prizeValue string
+	var prizeValueID *int
+	if roulette.Prize != nil && *roulette.Prize != "" {
+		prizeValue = *roulette.Prize
+	} else if roulette.SpinResult != nil {
+		// Fallback to spin_result if prize field is not set
+		// prize_value is now int64 (points), convert to string
+		if pv, ok := roulette.SpinResult["prize_value"].(int64); ok {
+			prizeValue = fmt.Sprintf("%d", pv)
+		} else if pv, ok := roulette.SpinResult["prize_value"].(float64); ok {
+			// Handle case where JSON unmarshaling converts int64 to float64
+			prizeValue = fmt.Sprintf("%.0f", pv)
+		}
+		if pvID, ok := roulette.SpinResult["prize_value_id"].(int); ok {
+			prizeValueID = &pvID
+		}
+	}
+
+	// If no prize found, try to get from prize_value_id
+	if prizeValue == "" && prizeValueID != nil && s.prizeValueRepo != nil {
+		pv, err := s.prizeValueRepo.GetPrizeValueByID(ctx, *prizeValueID)
+		if err == nil && pv != nil {
+			prizeValue = fmt.Sprintf("%d", pv.Value)
+		}
+	}
+
+	// If still no prize found, determine default prize
+	if prizeValue == "" {
+		var err error
+		prizeValue, _, err = s.determinePrize(ctx, config, roulette)
+		if err != nil {
+			return nil, fmt.Errorf("failed to determine prize: %w", err)
+		}
+	}
+
+	// Determine prize type
+	prizeType := domain.PrizeTypeRouletteOnStart
+	if config.Type == domain.RouletteTypeDuringEvent {
+		prizeType = domain.PrizeTypeRouletteDuringEvent
+	}
+
+	// Get user UUID - must be set (user_uuid is now mandatory)
+	var userID string
+	if preauthToken.UserUUID != nil {
+		userID = *preauthToken.UserUUID
+	} else if hasSessionID && s.userRepo != nil {
+		// Try to get user by session_id
+		if user, err := s.userRepo.GetUserBySessionID(ctx, sessionID); err == nil && user != nil {
+			userID = user.UserID
+		} else {
+			return nil, errors.New("user_uuid is required to take prize - user not found by session_id")
+		}
+	} else {
+		return nil, errors.New("user_uuid is required to take prize")
 	}
 
 	// Create prize record
 	now := time.Now().UnixMilli()
+	eventID := config.EventID
 	prize := &domain.Prize{
-		EventID:        config.EventID,
+		EventID:        &eventID,
+		UserID:         &userID,
+		PrizeValueID:   prizeValueID,
 		PreauthTokenID: &preauthToken.ID,
 		RouletteID:     &roulette.ID,
 		PrizeValue:     prizeValue,
 		PrizeType:      prizeType,
 		AwardedAt:      now,
 		CreatedAt:      now,
-	}
-
-	// If user is authenticated, also set user_uuid
-	if preauthToken.UserUUID != nil {
-		prize.UserID = preauthToken.UserUUID
 	}
 
 	// Create prize in database
@@ -345,8 +548,8 @@ func (s *RouletteService) GetPreauthToken(ctx context.Context, sessionID, ipAddr
 		return existingToken.Token, nil
 	}
 
-	// Get active on_start config (no event_id)
-	config, err := s.repo.GetRouletteConfigByType(ctx, domain.RouletteTypeOnStart, nil)
+	// Get active on_start config (references startup event)
+	config, err := s.repo.GetRouletteConfigByType(ctx, domain.RouletteTypeOnStart, "startup")
 	if err != nil {
 		return "", fmt.Errorf("failed to get roulette config: %w", err)
 	}
@@ -378,14 +581,14 @@ func (s *RouletteService) LinkPreauthTokenToUser(ctx context.Context, preauthTok
 
 // determinePrize determines the prize value based on event or default
 func (s *RouletteService) determinePrize(ctx context.Context, config *domain.RouletteConfig, roulette *domain.Roulette) (string, domain.PrizeType, error) {
-	// If this is a during_event roulette and event_id is set, get event rewards
-	if config.Type == domain.RouletteTypeDuringEvent && config.EventID != nil {
+	// If this is a during_event roulette, get event rewards
+	if config.Type == domain.RouletteTypeDuringEvent {
 		if s.eventRepo == nil {
 			return "Default Prize", domain.PrizeTypeRouletteDuringEvent, nil
 		}
 
 		// Get event by ID
-		event, err := s.eventRepo.GetEventByID(ctx, *config.EventID)
+		event, err := s.eventRepo.GetEventByID(ctx, config.EventID)
 		if err != nil {
 			return "Default Prize", domain.PrizeTypeRouletteDuringEvent, nil
 		}
@@ -420,7 +623,7 @@ func generateTokenFromSessionAndIP(sessionID, ipAddress string) string {
 
 // CreatePreauthToken creates a preauth token (typically called from browser)
 // DEPRECATED: Use GetPreauthToken instead for on_start roulette
-func (s *RouletteService) CreatePreauthToken(ctx context.Context, rouletteType domain.RouletteType, eventID *string, token string, expiresAt int64, userUUID *string) error {
+func (s *RouletteService) CreatePreauthToken(ctx context.Context, rouletteType domain.RouletteType, eventID string, token string, expiresAt int64, userUUID *string) error {
 	// Get active config
 	config, err := s.repo.GetRouletteConfigByType(ctx, rouletteType, eventID)
 	if err != nil {

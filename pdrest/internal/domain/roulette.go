@@ -12,7 +12,7 @@ const (
 type RouletteConfig struct {
 	ID        int          `json:"id"`
 	Type      RouletteType `json:"type"`
-	EventID   *string      `json:"event_id,omitempty"` // NULL for on_start, required for during_event
+	EventID   string       `json:"event_id"` // Required foreign key to all_events (startup for on_start, specific event for during_event)
 	MaxSpins  int          `json:"max_spins"`
 	IsActive  bool         `json:"is_active"`
 	CreatedAt int64        `json:"created_at"`
@@ -46,19 +46,31 @@ type Roulette struct {
 
 // SpinRequest represents a request to make a spin
 type SpinRequest struct {
-	PreauthToken string `json:"preauth_token"`
+	RouletteID   int    `json:"roulette_id"`
+	PreauthToken string `json:"preauth_token,omitempty"` // Optional, can also be provided via header or query
 }
 
-// SpinResponse represents the response after a spin
+type SpinResult struct {
+	SegmentID string `json:"segmentId"`
+	Label     string `json:"label"`
+}
+
+type SpinReward struct {
+	Type   string  `json:"type"`
+	Amount float64 `json:"amount"`
+}
+
+// SpinResponse represents the response after a spin (frontend contract)
 type SpinResponse struct {
-	Roulette       *Roulette `json:"roulette"`
-	RemainingSpins int       `json:"remaining_spins"`
-	CanSpin        bool      `json:"can_spin"`
+	Result    SpinResult `json:"result"`
+	SpinsLeft int        `json:"spinsLeft"`
+	Reward    SpinReward `json:"reward"`
 }
 
 // TakePrizeRequest represents a request to take the prize
 type TakePrizeRequest struct {
-	PreauthToken string `json:"preauth_token,omitempty"` // Optional, will be generated from session+IP if not provided
+	RouletteID   int    `json:"roulette_id"`
+	PreauthToken string `json:"preauth_token,omitempty"` // Optional, can also be provided via header or query
 }
 
 // TakePrizeResponse represents the response after taking prize

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"pdrest/internal/data"
 	"pdrest/internal/domain"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -187,39 +186,23 @@ func (s *RatingService) processBets(bets []domain.Bet, maxCreatedAt *int64) (int
 	return totalPoints, nil
 }
 
-// parsePrizeValueToPoints parses prize value string (e.g., "0.0001 ETH", "100 points") and converts to points
-// Returns points as int64 (1 ETH = 10^9 points)
+// parsePrizeValueToPoints parses prize value string and converts to points
+// Prize values are now stored as numeric strings (points) from prize_values table
+// Returns points as int64
 func (s *RatingService) parsePrizeValueToPoints(prizeValue string) (int64, error) {
 	// Remove whitespace
 	prizeValue = strings.TrimSpace(prizeValue)
-
-	// Try to extract numeric value and currency using regex
-	// Match patterns like "0.0001 ETH", "100 points", "50", etc.
-	re := regexp.MustCompile(`^([\d.]+)\s*(\w+)?`)
-	matches := re.FindStringSubmatch(prizeValue)
-	if len(matches) < 2 {
-		return 0, fmt.Errorf("invalid prize value format: %s", prizeValue)
+	if prizeValue == "" {
+		return 0, fmt.Errorf("prize value is empty")
 	}
 
-	// Parse the numeric value
-	value, err := strconv.ParseFloat(matches[1], 64)
+	// Parse as integer (prize values are now stored as points directly)
+	value, err := strconv.ParseInt(prizeValue, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse prize value: %w", err)
+		return 0, fmt.Errorf("failed to parse prize value as integer: %w", err)
 	}
 
-	// Check if it's ETH (1 ETH = 10^9 points)
-	if len(matches) >= 3 && matches[2] != "" {
-		currency := strings.ToUpper(strings.TrimSpace(matches[2]))
-		if currency == "ETH" {
-			// Convert ETH to points: 1 ETH = 10^9 points
-			return int64(value * 1e9), nil
-		}
-		// For other currencies or "points", assume 1 unit = 1 point
-		return int64(value), nil
-	}
-
-	// If no currency specified, assume it's already in points
-	return int64(value), nil
+	return value, nil
 }
 
 func (s *RatingService) GetGlobalRating(ctx context.Context, limit, offset int) ([]domain.GlobalRatingEntry, error) {

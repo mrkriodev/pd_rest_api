@@ -14,7 +14,7 @@ import (
 
 type RouletteRepository interface {
 	// Config methods
-	GetRouletteConfigByType(ctx context.Context, rouletteType domain.RouletteType, eventID *string) (*domain.RouletteConfig, error)
+	GetRouletteConfigByType(ctx context.Context, rouletteType domain.RouletteType, eventID string) (*domain.RouletteConfig, error)
 	GetRouletteConfigByID(ctx context.Context, id int) (*domain.RouletteConfig, error)
 	CreateRouletteConfig(ctx context.Context, config *domain.RouletteConfig) error
 	UpdateRouletteConfig(ctx context.Context, config *domain.RouletteConfig) error
@@ -41,38 +41,22 @@ func NewPostgresRouletteRepository(pool *pgxpool.Pool) *PostgresRouletteReposito
 	return &PostgresRouletteRepository{pool: pool}
 }
 
-// GetRouletteConfigByType retrieves active roulette config by type and optional event_id
-func (r *PostgresRouletteRepository) GetRouletteConfigByType(ctx context.Context, rouletteType domain.RouletteType, eventID *string) (*domain.RouletteConfig, error) {
-	var query string
-	var args []interface{}
-
-	if rouletteType == domain.RouletteTypeDuringEvent && eventID != nil {
-		query = `
-			SELECT id, roulette_type, event_id, max_spins, is_active, created_at, updated_at
-			FROM roulette_config
-			WHERE roulette_type = $1 AND event_id = $2 AND is_active = TRUE
-			ORDER BY id DESC
-			LIMIT 1
-		`
-		args = []interface{}{string(rouletteType), *eventID}
-	} else {
-		query = `
-			SELECT id, roulette_type, event_id, max_spins, is_active, created_at, updated_at
-			FROM roulette_config
-			WHERE roulette_type = $1 AND event_id IS NULL AND is_active = TRUE
-			ORDER BY id DESC
-			LIMIT 1
-		`
-		args = []interface{}{string(rouletteType)}
-	}
+// GetRouletteConfigByType retrieves active roulette config by type and event_id
+func (r *PostgresRouletteRepository) GetRouletteConfigByType(ctx context.Context, rouletteType domain.RouletteType, eventID string) (*domain.RouletteConfig, error) {
+	query := `
+		SELECT id, roulette_type, event_id, max_spins, is_active, created_at, updated_at
+		FROM roulette_config
+		WHERE roulette_type = $1 AND event_id = $2 AND is_active = TRUE
+		ORDER BY id DESC
+		LIMIT 1
+	`
 
 	var config domain.RouletteConfig
-	var eventIDPtr *string
 
-	err := r.pool.QueryRow(ctx, query, args...).Scan(
+	err := r.pool.QueryRow(ctx, query, string(rouletteType), eventID).Scan(
 		&config.ID,
 		&config.Type,
-		&eventIDPtr,
+		&config.EventID,
 		&config.MaxSpins,
 		&config.IsActive,
 		&config.CreatedAt,
@@ -85,7 +69,6 @@ func (r *PostgresRouletteRepository) GetRouletteConfigByType(ctx context.Context
 		return nil, fmt.Errorf("failed to get roulette config: %w", err)
 	}
 
-	config.EventID = eventIDPtr
 	return &config, nil
 }
 
@@ -98,12 +81,11 @@ func (r *PostgresRouletteRepository) GetRouletteConfigByID(ctx context.Context, 
 	`
 
 	var config domain.RouletteConfig
-	var eventIDPtr *string
 
 	err := r.pool.QueryRow(ctx, query, id).Scan(
 		&config.ID,
 		&config.Type,
-		&eventIDPtr,
+		&config.EventID,
 		&config.MaxSpins,
 		&config.IsActive,
 		&config.CreatedAt,
@@ -116,7 +98,6 @@ func (r *PostgresRouletteRepository) GetRouletteConfigByID(ctx context.Context, 
 		return nil, fmt.Errorf("failed to get roulette config: %w", err)
 	}
 
-	config.EventID = eventIDPtr
 	return &config, nil
 }
 

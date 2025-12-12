@@ -4,22 +4,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 
-	"golang.org/x/oauth2"
-	googleoauth2 "google.golang.org/api/oauth2/v2"
-	"google.golang.org/api/option"
+	"google.golang.org/api/idtoken"
 )
 
-// GoogleAuthService handles Google OAuth token verification
+// GoogleAuthService handles Google ID token verification
 type GoogleAuthService struct {
-	httpClient *http.Client
+	clientID string
 }
 
 // NewGoogleAuthService creates a new Google auth service
-func NewGoogleAuthService() (*GoogleAuthService, error) {
+func NewGoogleAuthService(clientID string) (*GoogleAuthService, error) {
+	if clientID == "" {
+		return nil, errors.New("Google client ID is required")
+	}
 	return &GoogleAuthService{
-		httpClient: &http.Client{},
+		clientID: clientID,
 	}, nil
 }
 
@@ -30,7 +30,7 @@ type GoogleUserInfo struct {
 	Name  string
 }
 
-// ValidateWithGoogle validates a Google access token and returns user info
+// ValidateWithGoogle validates a Google ID token and returns user info
 func (s *GoogleAuthService) ValidateWithGoogle(token string) (*GoogleUserInfo, error) {
 	if token == "" {
 		return nil, errors.New("token is required")
@@ -38,35 +38,25 @@ func (s *GoogleAuthService) ValidateWithGoogle(token string) (*GoogleUserInfo, e
 
 	ctx := context.Background()
 
-	// Create OAuth2 config (no client ID/secret needed for tokeninfo)
-	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
-	client := oauth2.NewClient(ctx, ts)
-
-	// Create OAuth2 service with authenticated client
-	service, err := googleoauth2.NewService(ctx, option.WithHTTPClient(client))
+	// Validate the ID token using Google's idtoken package
+	// This verifies the token signature, expiration, and audience (client ID)
+	payload, err := idtoken.Validate(ctx, token, s.clientID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Google OAuth2 service: %w", err)
+		return nil, fmt.Errorf("failed to validate Google ID token: %w", err)
 	}
 
-	// Use the tokeninfo endpoint to validate the token
-	tokenInfo, err := service.Tokeninfo().AccessToken(token).Context(ctx).Do()
-	if err != nil {
-		return nil, fmt.Errorf("failed to validate Google token: %w", err)
+	// Extract user information from the token payload
+	userID, ok := payload.Claims["sub"].(string)
+	if !ok || userID == "" {
+		return nil, errors.New("invalid token: missing user ID (sub claim)")
 	}
 
-	if tokenInfo.UserId == "" {
-		return nil, errors.New("invalid token: missing user ID")
-	}
-
-	// Get user info using the authenticated client
-	userInfo, err := service.Userinfo.V2.Me.Get().Context(ctx).Do()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get user info: %w", err)
-	}
+	email, _ := payload.Claims["email"].(string)
+	name, _ := payload.Claims["name"].(string)
 
 	return &GoogleUserInfo{
-		ID:    tokenInfo.UserId,
-		Email: userInfo.Email,
-		Name:  userInfo.Name,
+		ID:    userID,
+		Email: email,
+		Name:  name,
 	}, nil
 }

@@ -28,17 +28,16 @@ func NewPostgresPrizeRepository(pool *pgxpool.Pool) *PostgresPrizeRepository {
 
 func (r *PostgresPrizeRepository) CreatePrize(ctx context.Context, prize *domain.Prize) error {
 	query := `
-		INSERT INTO prizes (event_id, user_uuid, preauth_token_id, roulette_id, prize_value, prize_type, awarded_at, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO prizes (event_id, user_uuid, prize_value_id, preauth_token_id, roulette_id, prize_value, prize_type, awarded_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id
 	`
 
-	var userUUID interface{}
-	if prize.UserID != nil {
-		userUUID = *prize.UserID
-	} else {
-		userUUID = nil
+	// user_uuid is now mandatory
+	if prize.UserID == nil {
+		return fmt.Errorf("user_uuid is required")
 	}
+	userUUID := *prize.UserID
 
 	var eventID interface{}
 	if prize.EventID != nil {
@@ -52,6 +51,7 @@ func (r *PostgresPrizeRepository) CreatePrize(ctx context.Context, prize *domain
 		query,
 		eventID,
 		userUUID,
+		prize.PrizeValueID,
 		prize.PreauthTokenID,
 		prize.RouletteID,
 		prize.PrizeValue,
@@ -69,19 +69,20 @@ func (r *PostgresPrizeRepository) CreatePrize(ctx context.Context, prize *domain
 
 func (r *PostgresPrizeRepository) GetPrizeByID(ctx context.Context, id int) (*domain.Prize, error) {
 	query := `
-		SELECT id, event_id, user_uuid, preauth_token_id, roulette_id, prize_value, prize_type, awarded_at, created_at
+		SELECT id, event_id, user_uuid, prize_value_id, preauth_token_id, roulette_id, prize_value, prize_type, awarded_at, created_at
 		FROM prizes
 		WHERE id = $1
 	`
 
 	var prize domain.Prize
 	var eventID *string
-	var userID *string
+	var userID string
 
 	err := r.pool.QueryRow(ctx, query, id).Scan(
 		&prize.ID,
 		&eventID,
 		&userID,
+		&prize.PrizeValueID,
 		&prize.PreauthTokenID,
 		&prize.RouletteID,
 		&prize.PrizeValue,
@@ -98,14 +99,14 @@ func (r *PostgresPrizeRepository) GetPrizeByID(ctx context.Context, id int) (*do
 	}
 
 	prize.EventID = eventID
-	prize.UserID = userID
+	prize.UserID = &userID
 
 	return &prize, nil
 }
 
 func (r *PostgresPrizeRepository) GetPrizesByUserID(ctx context.Context, userID string) ([]domain.Prize, error) {
 	query := `
-		SELECT id, event_id, user_uuid, preauth_token_id, roulette_id, prize_value, prize_type, awarded_at, created_at
+		SELECT id, event_id, user_uuid, prize_value_id, preauth_token_id, roulette_id, prize_value, prize_type, awarded_at, created_at
 		FROM prizes
 		WHERE user_uuid = $1
 		ORDER BY awarded_at DESC
@@ -121,12 +122,13 @@ func (r *PostgresPrizeRepository) GetPrizesByUserID(ctx context.Context, userID 
 	for rows.Next() {
 		var prize domain.Prize
 		var eventID *string
-		var userIDPtr *string
+		var userIDStr string
 
 		if err := rows.Scan(
 			&prize.ID,
 			&eventID,
-			&userIDPtr,
+			&userIDStr,
+			&prize.PrizeValueID,
 			&prize.PreauthTokenID,
 			&prize.RouletteID,
 			&prize.PrizeValue,
@@ -138,7 +140,7 @@ func (r *PostgresPrizeRepository) GetPrizesByUserID(ctx context.Context, userID 
 		}
 
 		prize.EventID = eventID
-		prize.UserID = userIDPtr
+		prize.UserID = &userIDStr
 		prizes = append(prizes, prize)
 	}
 
@@ -151,7 +153,7 @@ func (r *PostgresPrizeRepository) GetPrizesByUserID(ctx context.Context, userID 
 
 func (r *PostgresPrizeRepository) GetPrizesByPreauthTokenID(ctx context.Context, preauthTokenID int) ([]domain.Prize, error) {
 	query := `
-		SELECT id, event_id, user_uuid, preauth_token_id, roulette_id, prize_value, prize_type, awarded_at, created_at
+		SELECT id, event_id, user_uuid, prize_value_id, preauth_token_id, roulette_id, prize_value, prize_type, awarded_at, created_at
 		FROM prizes
 		WHERE preauth_token_id = $1
 		ORDER BY awarded_at DESC
@@ -167,12 +169,13 @@ func (r *PostgresPrizeRepository) GetPrizesByPreauthTokenID(ctx context.Context,
 	for rows.Next() {
 		var prize domain.Prize
 		var eventID *string
-		var userID *string
+		var userID string
 
 		if err := rows.Scan(
 			&prize.ID,
 			&eventID,
 			&userID,
+			&prize.PrizeValueID,
 			&prize.PreauthTokenID,
 			&prize.RouletteID,
 			&prize.PrizeValue,
@@ -184,7 +187,7 @@ func (r *PostgresPrizeRepository) GetPrizesByPreauthTokenID(ctx context.Context,
 		}
 
 		prize.EventID = eventID
-		prize.UserID = userID
+		prize.UserID = &userID
 		prizes = append(prizes, prize)
 	}
 

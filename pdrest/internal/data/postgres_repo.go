@@ -101,6 +101,33 @@ func (r *PostgresUserRepository) GetUserByTelegramID(telegramID int64) (*domain.
 	return &result, nil
 }
 
+func (r *PostgresUserRepository) GetUserBySessionID(ctx context.Context, sessionID string) (*domain.User, error) {
+	if sessionID == "" {
+		return nil, fmt.Errorf("session_id is required")
+	}
+
+	query := `
+		SELECT user_uuid
+		FROM users
+		WHERE session_id = $1
+	`
+
+	var user domain.User
+
+	err := r.pool.QueryRow(ctx, query, sessionID).Scan(
+		&user.UserID,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get user by session_id: %w", err)
+	}
+
+	return &user, nil
+}
+
 func (r *PostgresUserRepository) CreateOrUpdateUserBySession(sessionID string, ipAddress string) error {
 	ctx := context.Background()
 

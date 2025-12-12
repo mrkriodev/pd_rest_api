@@ -17,6 +17,7 @@ type Config struct {
 	WAF      WAFConfig
 	JWT      JWTConfig
 	Telegram TelegramConfig
+	Google   GoogleConfig
 }
 
 type ServerConfig struct {
@@ -51,6 +52,10 @@ type JWTConfig struct {
 
 type TelegramConfig struct {
 	BotToken string
+}
+
+type GoogleConfig struct {
+	ClientID string
 }
 
 func Load() *Config {
@@ -115,6 +120,9 @@ func Load() *Config {
 		},
 		Telegram: TelegramConfig{
 			BotToken: getEnv("TELEGRAM_BOT_TOKEN", ""),
+		},
+		Google: GoogleConfig{
+			ClientID: getEnv("GOOGLE_CLIENT_ID", ""),
 		},
 	}
 }

@@ -13,10 +13,11 @@ const (
 type Prize struct {
 	ID             int       `json:"id"`
 	EventID        *string   `json:"event_id,omitempty"`
-	UserID         *string   `json:"userID,omitempty"`           // NULL if awarded by preauth_token
-	PreauthTokenID *int      `json:"preauth_token_id,omitempty"` // NULL if awarded by user_uuid
+	UserID         *string   `json:"userID"`                     // Now mandatory
+	PrizeValueID   *int      `json:"prize_value_id,omitempty"`   // Reference to prize_values table
+	PreauthTokenID *int      `json:"preauth_token_id,omitempty"` // Optional, for tracking
 	RouletteID     *int      `json:"roulette_id,omitempty"`
-	PrizeValue     string    `json:"prize_value"`
+	PrizeValue     string    `json:"prize_value"` // Prize value text (e.g., "0.01 ETH")
 	PrizeType      PrizeType `json:"prize_type"`
 	AwardedAt      int64     `json:"awarded_at"`
 	CreatedAt      int64     `json:"created_at"`
@@ -25,7 +26,8 @@ type Prize struct {
 // CreatePrizeRequest represents a request to create a prize
 type CreatePrizeRequest struct {
 	EventID        *string   `json:"event_id,omitempty"`
-	UserID         *string   `json:"userID,omitempty"`
+	UserID         *string   `json:"userID"`
+	PrizeValueID   *int      `json:"prize_value_id,omitempty"`
 	PreauthTokenID *int      `json:"preauth_token_id,omitempty"`
 	RouletteID     *int      `json:"roulette_id,omitempty"`
 	PrizeValue     string    `json:"prize_value"`

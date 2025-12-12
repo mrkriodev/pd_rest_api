@@ -1,0 +1,35 @@
+-- Seed startup roulette event and ensure roulette config id=1 is linked and max_spins = 3
+
+-- Insert startup event
+-- INSERT INTO all_events (id, badge, title, desc_text, deadline, tags, reward, info, created_at, updated_at)
+-- VALUES (
+--     'startup',
+--     'Startup Bonus',
+--     'Startup Roulette Event',
+--     'Spin the startup roulette and win small ETH rewards.',
+--     EXTRACT(EPOCH FROM (NOW() + INTERVAL '365 days'))::BIGINT * 1000,
+--     'startup',
+--     '[
+--         {"place": "any", "value": "0.01 ETH"}
+--     ]'::jsonb,
+--     'Default startup roulette event',
+--     EXTRACT(EPOCH FROM NOW())::BIGINT * 1000,
+--     EXTRACT(EPOCH FROM NOW())::BIGINT * 1000
+-- )
+-- ON CONFLICT (id) DO NOTHING;
+
+-- Update/insert roulette_config id=1 with max_spins = 3
+-- Note: event_id is now required and references 'startup' event (foreign key constraint)
+-- INSERT INTO roulette_config (id, roulette_type, event_id, max_spins, is_active, created_at, updated_at)
+-- VALUES (
+--     1, 'on_start', 'startup', 3, TRUE,
+--     EXTRACT(EPOCH FROM NOW())::BIGINT * 1000,
+--     EXTRACT(EPOCH FROM NOW())::BIGINT * 1000
+-- );
+-- ON CONFLICT (id) DO UPDATE
+-- SET roulette_type = EXCLUDED.roulette_type,
+--     event_id = EXCLUDED.event_id,
+--     max_spins = EXCLUDED.max_spins,
+--     is_active = EXCLUDED.is_active,
+--     updated_at = EXCLUDED.updated_at;
+

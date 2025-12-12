@@ -53,10 +53,19 @@ func main() {
 	authService := services.NewAuthService(cfg.JWT.SecretKey, cfg.JWT.AccessTokenTTL, cfg.JWT.RefreshTokenTTL)
 
 	// Create Google auth service
-	googleAuthService, err := services.NewGoogleAuthService()
-	if err != nil {
-		log.Printf("Warning: Failed to create Google auth service: %v", err)
-		log.Println("Google token verification will be unavailable")
+	var googleAuthService *services.GoogleAuthService
+	if cfg.Google.ClientID != "" {
+		var err error
+		googleAuthService, err = services.NewGoogleAuthService(cfg.Google.ClientID)
+		if err != nil {
+			log.Printf("Warning: Failed to create Google auth service: %v", err)
+			log.Println("Google token verification will be unavailable")
+			googleAuthService = nil
+		} else {
+			log.Println("Google authentication service initialized successfully")
+		}
+	} else {
+		log.Println("Warning: GOOGLE_CLIENT_ID not configured, Google token verification will be unavailable")
 		googleAuthService = nil
 	}
 
@@ -91,6 +100,7 @@ func main() {
 		ratingRepo := data.NewPostgresRatingRepository(db.Pool)
 		achievementRepo := data.NewPostgresAchievementRepository(db.Pool)
 		prizeRepo := data.NewPostgresPrizeRepository(db.Pool)
+		prizeValueRepo := data.NewPostgresPrizeValueRepository(db.Pool)
 
 		repo = postgresRepo
 
@@ -98,7 +108,7 @@ func main() {
 		userService = services.NewUserService(repo)
 		ratingService = services.NewRatingService(ratingRepo, prizeRepo, betRepo)
 		eventService = services.NewEventService(eventRepo)
-		rouletteService = services.NewRouletteService(rouletteRepo, repo, prizeRepo, eventRepo)
+		rouletteService = services.NewRouletteService(rouletteRepo, repo, prizeRepo, prizeValueRepo, eventRepo)
 		priceProvider := services.NewPriceProvider("") // Uses Binance API by default
 		betService = services.NewBetService(betRepo, priceProvider)
 		achievementService = services.NewAchievementService(achievementRepo)

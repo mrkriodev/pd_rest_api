@@ -12,6 +12,7 @@ import (
 	"pdrest/internal/domain"
 	"pdrest/internal/interfaces/services"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 	"gopkg.in/yaml.v3"
 )
@@ -81,6 +82,7 @@ func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingServi
 	// Roulette endpoints
 	roulette := api.Group("/roulette")
 	roulette.GET("/status", h.GetRouletteStatus)
+	roulette.GET("/get", h.GetRouletteConfig)
 	roulette.POST("/spin", h.Spin)
 	roulette.POST("/take-prize", h.TakePrize)
 	roulette.GET("/get_preauth_token", h.GetPreauthToken)
@@ -620,6 +622,91 @@ func (h *HTTPHandler) GetRouletteStatus(c echo.Context) error {
 	return c.JSON(http.StatusOK, status)
 }
 
+// validateJWTToken validates JWT token from Authorization header and returns userID if valid
+func (h *HTTPHandler) validateJWTToken(c echo.Context) (string, error) {
+	authHeader := c.Request().Header.Get("Authorization")
+	if authHeader == "" {
+		return "", fmt.Errorf("missing authorization header")
+	}
+
+	// Extract token from "Bearer <token>"
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || parts[0] != "Bearer" {
+		return "", fmt.Errorf("invalid authorization header format")
+	}
+
+	tokenString := parts[1]
+
+	// Parse and validate token
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		// Validate signing method
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, jwt.ErrSignatureInvalid
+		}
+		return []byte(h.jwtSecretKey), nil
+	})
+
+	if err != nil {
+		return "", fmt.Errorf("invalid token: %w", err)
+	}
+
+	if !token.Valid {
+		return "", fmt.Errorf("invalid token")
+	}
+
+	// Extract claims
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return "", fmt.Errorf("invalid token claims")
+	}
+
+	// Extract user UUID
+	userID, ok := claims["uuid"].(string)
+	if !ok || userID == "" {
+		return "", fmt.Errorf("user ID not found in token")
+	}
+
+	return userID, nil
+}
+
+// GetRouletteConfig returns roulette config by id
+func (h *HTTPHandler) GetRouletteConfig(c echo.Context) error {
+	if h.rouletteService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for roulette"})
+	}
+
+	idStr := c.QueryParam("id")
+	if idStr == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id query parameter is required"})
+	}
+
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid id"})
+	}
+
+	// JWT is required for roulette id != 1
+	if id != 1 {
+		userID, err := h.validateJWTToken(c)
+		if err != nil {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authorization required for this roulette: " + err.Error()})
+		}
+		// Store userID in context for potential future use
+		c.Set("userID", userID)
+	}
+
+	ctx := context.Background()
+	config, err := h.rouletteService.GetRouletteConfigByID(ctx, id)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	if config == nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "roulette config not found"})
+	}
+
+	return c.JSON(http.StatusOK, config)
+}
+
 // Spin performs a spin using preauth token
 func (h *HTTPHandler) Spin(c echo.Context) error {
 	if h.rouletteService == nil {
@@ -631,12 +718,63 @@ func (h *HTTPHandler) Spin(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
-	if req.PreauthToken == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "preauth_token is required"})
+	if req.RouletteID == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "roulette_id is required"})
+	}
+
+	// JWT is required for roulette id != 1
+	if req.RouletteID != 1 {
+		userID, err := h.validateJWTToken(c)
+		if err != nil {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authorization required for this roulette: " + err.Error()})
+		}
+		// Store userID in context for potential future use
+		c.Set("userID", userID)
+	}
+
+	// Get preauth_token from header, query, or body (optional)
+	// Priority: header > query > body
+	preauthToken := c.Request().Header.Get("X-Preauth-Token")
+	if preauthToken == "" {
+		preauthToken = c.QueryParam("preauth_token")
+	}
+	if preauthToken == "" {
+		preauthToken = req.PreauthToken
+	}
+
+	// Extract session_id and IP address (required if preauth_token is not provided)
+	sessionID := c.Request().Header.Get("X-SESSION-ID")
+	if sessionID == "" {
+		cookie, err := c.Cookie("X-SESSION-ID")
+		if err == nil && cookie != nil && cookie.Value != "" {
+			sessionID = cookie.Value
+		}
+	}
+
+	// Get client IP
+	ipAddress := c.Request().Header.Get("X-Forwarded-For")
+	if ipAddress == "" {
+		ipAddress = c.Request().Header.Get("X-Real-IP")
+	}
+	if ipAddress == "" {
+		ipAddress = c.RealIP()
 	}
 
 	ctx := context.Background()
-	response, err := h.rouletteService.Spin(ctx, &req)
+	// Pass Authorization header for event-based roulette auth enforcement
+	authHeader := c.Request().Header.Get("Authorization")
+	ctx = context.WithValue(ctx, services.ContextKeyAuthHeader, authHeader)
+
+	// Pass session_id and IP for preauth token generation if needed
+	if sessionID != "" {
+		ctx = context.WithValue(ctx, services.ContextKeySessionID, sessionID)
+	}
+	if ipAddress != "" {
+		ctx = context.WithValue(ctx, services.ContextKeyIPAddress, ipAddress)
+	}
+
+	// Pass preauthToken only as parameter (Spin method doesn't use req.PreauthToken)
+	response, err := h.rouletteService.Spin(ctx, preauthToken, &req)
 	if err != nil {
 		// Check if it's a business logic error (should return 400) or server error (500)
 		if strings.Contains(err.Error(), "invalid") ||
@@ -663,6 +801,29 @@ func (h *HTTPHandler) TakePrize(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
+	if req.RouletteID == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "roulette_id is required"})
+	}
+
+	// JWT is required for roulette id != 1
+	if req.RouletteID != 1 {
+		userID, err := h.validateJWTToken(c)
+		if err != nil {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authorization required for this roulette: " + err.Error()})
+		}
+		// Store userID in context for potential future use
+		c.Set("userID", userID)
+	}
+
+	// Get preauth_token from header, query, or body (optional)
+	preauthToken := c.Request().Header.Get("X-Preauth-Token")
+	if preauthToken == "" {
+		preauthToken = c.QueryParam("preauth_token")
+	}
+	if preauthToken == "" {
+		preauthToken = req.PreauthToken
+	}
+
 	// Extract session_id and IP address (required if preauth_token is not provided)
 	sessionID := c.Request().Header.Get("X-SESSION-ID")
 	if sessionID == "" {
@@ -682,7 +843,7 @@ func (h *HTTPHandler) TakePrize(c echo.Context) error {
 	}
 
 	// If preauth_token is not provided, session_id and IP are required
-	if req.PreauthToken == "" {
+	if preauthToken == "" {
 		if sessionID == "" {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "preauth_token is required, or X-SESSION-ID header/cookie must be provided"})
 		}
@@ -693,14 +854,18 @@ func (h *HTTPHandler) TakePrize(c echo.Context) error {
 
 	// Create context with session_id and IP for internal registration and token generation
 	ctx := context.Background()
+	// Pass Authorization header for event-based roulette auth enforcement
+	authHeader := c.Request().Header.Get("Authorization")
+	ctx = context.WithValue(ctx, services.ContextKeyAuthHeader, authHeader)
+
 	if sessionID != "" {
-		ctx = context.WithValue(ctx, "session_id", sessionID)
+		ctx = context.WithValue(ctx, services.ContextKeySessionID, sessionID)
 	}
 	if ipAddress != "" {
-		ctx = context.WithValue(ctx, "ip_address", ipAddress)
+		ctx = context.WithValue(ctx, services.ContextKeyIPAddress, ipAddress)
 	}
 
-	response, err := h.rouletteService.TakePrize(ctx, &req)
+	response, err := h.rouletteService.TakePrize(ctx, preauthToken, &req)
 	if err != nil {
 		// Check if it's a business logic error (should return 400) or server error (500)
 		if strings.Contains(err.Error(), "invalid") ||

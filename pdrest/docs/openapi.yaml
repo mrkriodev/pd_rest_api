@@ -408,14 +408,82 @@ paths:
                 $ref: '#/components/schemas/GetRouletteStatusResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /roulette/get:
+    get:
+      summary: Get roulette config by id
+      description: |
+        Returns roulette configuration by id. Authorization header is optional for id=1 (startup roulette),
+        but required for all other roulette ids.
+      tags:
+        - Roulette
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: Roulette config id (e.g., 1 for startup roulette)
+        - name: Authorization
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Bearer token. Required for roulette id != 1, optional for id=1
+      responses:
+        '200':
+          description: Roulette config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouletteConfig'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
   /roulette/spin:
     post:
       summary: Perform a roulette spin
+      description: |
+        Performs a roulette spin. If preauth_token is not provided (via header, query, or body),
+        it will be generated from X-SESSION-ID and IP address (same as get_preauth_token endpoint).
+        Authorization header is optional for roulette_id=1 (startup roulette), but required for all other roulette ids.
       tags:
         - Roulette
+      parameters:
+        - name: Authorization
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Bearer token. Required for roulette_id != 1, optional for roulette_id=1. Also required for event roulette (during_event).
+        - name: X-Preauth-Token
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Optional preauth token (can also be provided in query parameter)
+        - name: preauth_token
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional preauth token (alternative to X-Preauth-Token header)
+        - name: X-SESSION-ID
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Session ID (required if preauth_token is not provided, can also be provided via X-SESSION-ID cookie)
       requestBody:
         required: true
         content:
@@ -431,6 +499,8 @@ paths:
                 $ref: '#/components/schemas/SpinResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -442,15 +512,34 @@ paths:
         it will be generated from X-SESSION-ID and IP address. A user will be created
         if X-SESSION-ID and IP are provided but the user doesn't exist.
         Returns preauth_token in response if the user was unregistered.
+        Authorization header is optional for roulette_id=1 (startup roulette), but required for all other roulette ids.
       tags:
         - Roulette
       parameters:
+        - name: Authorization
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Bearer token. Required for roulette_id != 1, optional for roulette_id=1. Also required for event roulette (during_event).
         - name: X-SESSION-ID
           in: header
           required: false
           schema:
             type: string
           description: Session ID (required if preauth_token is not provided, can also be provided via X-SESSION-ID cookie)
+        - name: X-Preauth-Token
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Optional preauth token (can also be provided in query parameter)
+        - name: preauth_token
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional preauth token (alternative to X-Preauth-Token header)
       requestBody:
         required: true
         content:
@@ -466,6 +555,8 @@ paths:
                 $ref: '#/components/schemas/TakePrizeResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -498,6 +589,8 @@ paths:
                     description: The preauth token for roulette
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -729,31 +822,49 @@ components:
 
     SpinRequest:
       type: object
-      required:
-        - preauth_token
       properties:
+        roulette_id:
+          type: integer
+          description: Roulette configuration id (required)
         preauth_token:
           type: string
-          description: Preauth token for roulette session
+          description: Optional preauth token (can also be provided via header or query)
 
     SpinResponse:
       type: object
       properties:
-        roulette:
-          $ref: '#/components/schemas/Roulette'
-        remaining_spins:
+        result:
+          type: object
+          properties:
+            segmentId:
+              type: string
+              description: The segment ID that was spun
+            label:
+              type: string
+              description: The label/display text for the segment
+        spinsLeft:
           type: integer
           description: Number of remaining spins
-        can_spin:
-          type: boolean
-          description: Whether user can perform another spin
+        reward:
+          type: object
+          properties:
+            type:
+              type: string
+              description: Type of reward (e.g., "eth")
+            amount:
+              type: number
+              format: float
+              description: Amount of the reward
 
     TakePrizeRequest:
       type: object
       properties:
+        roulette_id:
+          type: integer
+          description: Roulette configuration id (required)
         preauth_token:
           type: string
-          description: Optional preauth token for roulette session. If not provided, will be generated from X-SESSION-ID and IP address.
+          description: Optional preauth token (can also be provided via header or query)
 
     TakePrizeResponse:
       type: object

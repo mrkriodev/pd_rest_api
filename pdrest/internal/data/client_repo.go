@@ -1,12 +1,16 @@
 package data
 
-import "pdrest/internal/domain"
+import (
+	"context"
+	"pdrest/internal/domain"
+)
 
 type UserRepository interface {
 	GetLastLogin(uuid string) (*domain.UserLastLogin, error)
 	GetProfile(uuid string) (*domain.UserProfile, error)
 	GetUserByGoogleID(googleID string) (*domain.User, error)
 	GetUserByTelegramID(telegramID int64) (*domain.User, error)
+	GetUserBySessionID(ctx context.Context, sessionID string) (*domain.User, error)
 	CreateOrUpdateUserBySession(sessionID string, ipAddress string) error
 }
 
@@ -40,6 +44,11 @@ func (r *InMemoryUserRepository) GetUserByGoogleID(googleID string) (*domain.Use
 
 func (r *InMemoryUserRepository) GetUserByTelegramID(telegramID int64) (*domain.User, error) {
 	// In-memory repository doesn't have Telegram user data
+	return nil, nil
+}
+
+func (r *InMemoryUserRepository) GetUserBySessionID(ctx context.Context, sessionID string) (*domain.User, error) {
+	// In-memory repository doesn't support user lookup by session
 	return nil, nil
 }
 
