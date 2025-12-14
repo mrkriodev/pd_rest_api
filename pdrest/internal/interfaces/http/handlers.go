@@ -777,21 +777,79 @@ func (h *HTTPHandler) UserAchievements(c echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
-// GetRouletteStatus gets the current status of roulette by preauth token
+// GetRouletteStatus gets the current status of roulette
+// If roulette_id = 1: checks X-SESSION-ID header
+// If roulette_id != 1: checks JWT Header
 func (h *HTTPHandler) GetRouletteStatus(c echo.Context) error {
 	if h.rouletteService == nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for roulette"})
 	}
 
-	// Get preauth token from query parameter or header
-	preauthToken := c.QueryParam("preauth_token")
-	if preauthToken == "" {
-		preauthToken = c.Request().Header.Get("X-Preauth-Token")
-	}
-	if preauthToken == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "preauth_token is required (query parameter or X-Preauth-Token header)"})
+	// Get roulette_id from query parameter
+	rouletteIDStr := c.QueryParam("roulette_id")
+	if rouletteIDStr == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "roulette_id query parameter is required"})
 	}
 
+	rouletteID, err := strconv.Atoi(rouletteIDStr)
+	if err != nil || rouletteID <= 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid roulette_id"})
+	}
+
+	var preauthToken string
+
+	// Authentication based on roulette_id
+	if rouletteID == 1 {
+		// For roulette_id = 1, check X-SESSION-ID header
+		sessionID := c.Request().Header.Get("X-SESSION-ID")
+		if sessionID == "" {
+			cookie, err := c.Cookie("X-SESSION-ID")
+			if err == nil && cookie != nil && cookie.Value != "" {
+				sessionID = cookie.Value
+			}
+		}
+		if sessionID == "" {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "X-SESSION-ID header is required for roulette_id=1"})
+		}
+
+		// Get client IP
+		ipAddress := c.Request().Header.Get("X-Forwarded-For")
+		if ipAddress == "" {
+			ipAddress = c.Request().Header.Get("X-Real-IP")
+		}
+		if ipAddress == "" {
+			ipAddress = c.RealIP()
+		}
+		if ipAddress == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "could not determine IP address"})
+		}
+
+		// Generate preauth token from session_id + IP (same logic as GetPreauthToken)
+		ctx := context.Background()
+		preauthToken, err = h.rouletteService.GetPreauthToken(ctx, sessionID, ipAddress)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+	} else {
+		// For roulette_id != 1, check JWT Header only
+		userID, err := h.validateJWTToken(c)
+		if err != nil {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authorization required for this roulette: " + err.Error()})
+		}
+		// Store userID in context for potential future use
+		c.Set("userID", userID)
+
+		// Get roulette status by user UUID and roulette config ID
+		ctx := context.Background()
+		status, err := h.rouletteService.GetRouletteStatusByUser(ctx, userID, rouletteID)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+
+		return c.JSON(http.StatusOK, status)
+	}
+
+	// For roulette_id = 1, use preauth token
 	ctx := context.Background()
 	status, err := h.rouletteService.GetRouletteStatus(ctx, preauthToken)
 	if err != nil {

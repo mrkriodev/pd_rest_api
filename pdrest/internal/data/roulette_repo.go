@@ -28,6 +28,7 @@ type RouletteRepository interface {
 
 	// Roulette methods
 	GetRouletteByPreauthToken(ctx context.Context, preauthTokenID int) (*domain.Roulette, error)
+	GetRouletteByUserAndConfig(ctx context.Context, userUUID string, rouletteConfigID int) (*domain.Roulette, error)
 	CreateRoulette(ctx context.Context, roulette *domain.Roulette) error
 	UpdateRoulette(ctx context.Context, roulette *domain.Roulette) error
 	TakePrize(ctx context.Context, rouletteID int, prize string) error
@@ -290,6 +291,55 @@ func (r *PostgresRouletteRepository) GetRouletteByPreauthToken(ctx context.Conte
 	var prizeTakenAtPtr *int64
 
 	err := r.pool.QueryRow(ctx, query, preauthTokenID).Scan(
+		&roulette.ID,
+		&roulette.RouletteConfigID,
+		&roulette.PreauthTokenID,
+		&roulette.SpinNumber,
+		&prizePtr,
+		&roulette.PrizeTaken,
+		&spinResultJSON,
+		&roulette.CreatedAt,
+		&roulette.UpdatedAt,
+		&prizeTakenAtPtr,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get roulette: %w", err)
+	}
+
+	roulette.Prize = prizePtr
+	roulette.PrizeTakenAt = prizeTakenAtPtr
+
+	// Unmarshal spin_result JSONB
+	if len(spinResultJSON) > 0 {
+		if err := json.Unmarshal(spinResultJSON, &roulette.SpinResult); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal spin_result: %w", err)
+		}
+	}
+
+	return &roulette, nil
+}
+
+// GetRouletteByUserAndConfig retrieves roulette by user UUID and roulette config ID
+func (r *PostgresRouletteRepository) GetRouletteByUserAndConfig(ctx context.Context, userUUID string, rouletteConfigID int) (*domain.Roulette, error) {
+	query := `
+		SELECT r.id, r.roulette_config_id, r.preauth_token_id, r.spin_number, r.prize, 
+		       r.prize_taken, r.spin_result, r.created_at, r.updated_at, r.prize_taken_at
+		FROM roulette r
+		INNER JOIN roulette_preauth_token pt ON r.preauth_token_id = pt.id
+		WHERE pt.user_uuid = $1 AND r.roulette_config_id = $2
+		ORDER BY r.created_at DESC
+		LIMIT 1
+	`
+
+	var roulette domain.Roulette
+	var prizePtr *string
+	var spinResultJSON []byte
+	var prizeTakenAtPtr *int64
+
+	err := r.pool.QueryRow(ctx, query, userUUID, rouletteConfigID).Scan(
 		&roulette.ID,
 		&roulette.RouletteConfigID,
 		&roulette.PreauthTokenID,

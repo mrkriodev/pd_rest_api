@@ -93,6 +93,54 @@ func (s *RouletteService) GetRouletteStatus(ctx context.Context, preauthToken st
 	return response, nil
 }
 
+// GetRouletteStatusByUser gets the current status of roulette by user UUID and roulette config ID
+func (s *RouletteService) GetRouletteStatusByUser(ctx context.Context, userUUID string, rouletteConfigID int) (*domain.GetRouletteStatusResponse, error) {
+	// Get config
+	config, err := s.repo.GetRouletteConfigByID(ctx, rouletteConfigID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get roulette config: %w", err)
+	}
+	if config == nil {
+		return &domain.GetRouletteStatusResponse{
+			CanSpin: false,
+		}, nil
+	}
+
+	// Get roulette by user UUID and config ID
+	roulette, err := s.repo.GetRouletteByUserAndConfig(ctx, userUUID, rouletteConfigID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get roulette: %w", err)
+	}
+
+	response := &domain.GetRouletteStatusResponse{
+		Config:     config,
+		CanSpin:    false,
+		PrizeTaken: false,
+	}
+
+	if roulette == nil {
+		// User hasn't started yet
+		response.RemainingSpins = config.MaxSpins
+		response.CanSpin = true
+		return response, nil
+	}
+
+	response.Roulette = roulette
+	response.PrizeTaken = roulette.PrizeTaken
+
+	if roulette.PrizeTaken {
+		// Prize already taken, no more spins
+		response.RemainingSpins = 0
+		response.CanSpin = false
+	} else {
+		// Calculate remaining spins
+		response.RemainingSpins = config.MaxSpins - roulette.SpinNumber
+		response.CanSpin = response.RemainingSpins > 0
+	}
+
+	return response, nil
+}
+
 // GetRouletteConfigByID returns roulette config by id
 func (s *RouletteService) GetRouletteConfigByID(ctx context.Context, id int) (*domain.RouletteConfig, error) {
 	if id <= 0 {

@@ -82,19 +82,33 @@ paths:
   /auth/refresh:
     post:
       summary: Refresh JWT token
+      description: |
+        When JWT_STRICT_MODE=true: Validates JWT token from Authorization header and returns new token pair.
+        When JWT_STRICT_MODE=false: Accepts userID in body to generate new tokens, or refresh_token to refresh existing tokens.
       tags:
         - Authentication
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Bearer token. Required when JWT_STRICT_MODE=true
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
               type: object
-              required:
-                - refresh_token
               properties:
                 refresh_token:
                   type: string
+                  description: Refresh token (required when JWT_STRICT_MODE=false and userID not provided)
+                userID:
+                  type: string
+                  description: User ID to generate tokens for (only works when JWT_STRICT_MODE=false)
       responses:
         '200':
           description: Token pair
@@ -102,6 +116,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TokenPair'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -264,10 +280,30 @@ paths:
   /user/assets:
     get:
       summary: Get user assets (points)
+      description: |
+        When JWT_STRICT_MODE=true: Validates JWT token from Authorization header. If userId is provided in query/body, verifies it matches the token.
+        When JWT_STRICT_MODE=false: Requires userId in request body or query parameter.
       tags:
         - User
       security:
         - BearerAuth: []
+      parameters:
+        - name: userId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: User ID (required when JWT_STRICT_MODE=false, optional when JWT_STRICT_MODE=true for verification)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: string
+                  description: User ID (required when JWT_STRICT_MODE=false, optional when JWT_STRICT_MODE=true for verification)
       responses:
         '200':
           description: Aggregated user points
@@ -275,6 +311,41 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserAssets'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      summary: Get user assets (points) - POST method
+      description: |
+        Same as GET /user/assets but accepts userId in request body.
+        When JWT_STRICT_MODE=true: Validates JWT token from Authorization header. If userId is provided, verifies it matches the token.
+        When JWT_STRICT_MODE=false: Requires userId in request body.
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  type: string
+                  description: User ID (required when JWT_STRICT_MODE=false, optional when JWT_STRICT_MODE=true for verification)
+      responses:
+        '200':
+          description: Aggregated user points
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserAssets'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '503':
@@ -390,18 +461,36 @@ paths:
   /roulette/status:
     get:
       summary: Get roulette status
+      description: |
+        Gets the current status of roulette including spins_left and other info about the current state.
+        If roulette_id = 1: Requires X-SESSION-ID header (no JWT required). Returns roulette status for pre-user entity identified by X-SESSION-ID.
+        If roulette_id != 1: Requires JWT Authorization header only. Returns roulette status for authenticated user.
       tags:
         - Roulette
+      security:
+        - BearerAuth: []
       parameters:
-        - name: preauth_token
+        - name: roulette_id
           in: query
+          required: true
+          schema:
+            type: integer
+          description: Roulette configuration id (1 for startup roulette, others require JWT)
+        - name: X-SESSION-ID
+          in: header
           required: false
           schema:
             type: string
-          description: Preauth token (can also be provided via X-Preauth-Token header)
+          description: Session ID (required when roulette_id=1, can also be provided via X-SESSION-ID cookie)
+        - name: Authorization
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Bearer token (required when roulette_id != 1)
       responses:
         '200':
-          description: Roulette status
+          description: Roulette status with spins_left and current state
           content:
             application/json:
               schema:
@@ -594,6 +683,52 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /getidbypreauth:
+    get:
+      summary: Get user ID by preauth token
+      description: |
+        Returns user UUID (as userId) for a valid preauth token.
+        Requires X-SESSION-ID header that must correspond to the preauth token.
+        The preauth token is validated against session_id + IP address.
+      tags:
+        - Authentication
+      parameters:
+        - name: preauth_token
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Preauth token (can also be provided via X-Preauth-Token header)
+        - name: X-Preauth-Token
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Preauth token (alternative to query parameter)
+        - name: X-SESSION-ID
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Session ID (must correspond to the preauth token)
+      responses:
+        '200':
+          description: User ID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userId:
+                    type: string
+                    description: User UUID linked to the preauth token
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -670,8 +805,9 @@ components:
     UserAssets:
       type: object
       properties:
-        userID:
+        userId:
           type: string
+          description: User UUID
         points:
           $ref: '#/components/schemas/RatingTotals'
         total_points:
