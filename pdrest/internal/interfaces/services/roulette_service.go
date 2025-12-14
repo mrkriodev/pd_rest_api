@@ -124,7 +124,7 @@ func (s *RouletteService) Spin(ctx context.Context, preauthTokenStr string, req 
 		if err != nil {
 			return nil, fmt.Errorf("failed to get preauth token: %w", err)
 		}
-		
+
 		// If token doesn't exist, create it
 		if preauthToken == nil {
 			// Get active on_start config (references startup event)
@@ -482,6 +482,14 @@ func (s *RouletteService) TakePrize(ctx context.Context, preauthTokenStr string,
 		}
 	} else {
 		return nil, errors.New("user_uuid is required to take prize")
+	}
+
+	// Update preauth token with user_uuid if it wasn't set before
+	if preauthToken.UserUUID == nil {
+		if err := s.repo.UpdatePreauthTokenUserUUID(ctx, preauthToken.Token, userID); err != nil {
+			// Log error but don't fail the request - prize can still be taken
+			_ = err
+		}
 	}
 
 	// Create prize record

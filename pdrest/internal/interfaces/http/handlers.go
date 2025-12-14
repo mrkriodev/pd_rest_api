@@ -73,6 +73,7 @@ func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingServi
 	user.GET("/last_login/:uuid", h.UserLastLogin)
 	user.GET("/profile/:uuid", h.UserProfile)
 	user.GET("/assets", h.UserAssets)
+	user.POST("/assets", h.UserAssets)
 	user.GET("/referral_link", h.UserReferralLink)
 	user.GET("/friends_ratings", h.UserFriendsRatings)
 	user.GET("/achievements", h.UserAchievements)
@@ -226,9 +227,76 @@ func (h *HTTPHandler) UserAssets(c echo.Context) error {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for user assets"})
 	}
 
-	userUUID, ok := c.Get("user_uuid").(string)
-	if !ok || userUUID == "" {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	var req struct {
+		UserID string `json:"userId" query:"userId"`
+	}
+
+	// Try to bind userId from body or query params
+	_ = c.Bind(&req)
+
+	// Also check query param if not in body
+	if req.UserID == "" {
+		req.UserID = c.QueryParam("userId")
+	}
+
+	var userUUID string
+
+	// In strict mode, validate JWT token from Authorization header and match with userId
+	if h.jwtStrictMode {
+		authHeader := c.Request().Header.Get("Authorization")
+		if authHeader == "" {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing authorization header"})
+		}
+
+		// Extract token from "Bearer <token>"
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid authorization header format"})
+		}
+
+		tokenString := parts[1]
+		if tokenString == "" {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "token cannot be empty"})
+		}
+
+		// Validate token
+		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, jwt.ErrSignatureInvalid
+			}
+			return []byte(h.jwtSecretKey), nil
+		})
+
+		if err != nil || !token.Valid {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid token"})
+		}
+
+		// Extract user UUID from token
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid token claims"})
+		}
+
+		tokenUserUUID, ok := claims["uuid"].(string)
+		if !ok || tokenUserUUID == "" {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid token: missing user UUID"})
+		}
+
+		// If userId is provided in body, verify it matches the token
+		if req.UserID != "" {
+			if req.UserID != tokenUserUUID {
+				return c.JSON(http.StatusForbidden, map[string]string{"error": "userId does not match token"})
+			}
+			userUUID = req.UserID
+		} else {
+			userUUID = tokenUserUUID
+		}
+	} else {
+		// Non-strict mode: get userId from body
+		if req.UserID == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "userId is required in request body"})
+		}
+		userUUID = req.UserID
 	}
 
 	assets, err := h.ratingService.GetUserAssets(c.Request().Context(), userUUID)
@@ -236,7 +304,14 @@ func (h *HTTPHandler) UserAssets(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, assets)
+	// Return response with userId (not userID)
+	response := map[string]interface{}{
+		"userId":       assets.UserID,
+		"points":       assets.Points,
+		"total_points": assets.TotalPoints,
+	}
+
+	return c.JSON(http.StatusOK, response)
 }
 
 func (h *HTTPHandler) UserReferralLink(c echo.Context) error {
@@ -391,22 +466,82 @@ func (h *HTTPHandler) BetStatus(c echo.Context) error {
 func (h *HTTPHandler) RefreshToken(c echo.Context) error {
 	var req struct {
 		RefreshToken string `json:"refresh_token"`
+		UserID       string `json:"userID"`
 	}
 
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
-	if req.RefreshToken == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "refresh_token is required"})
+	// If JWT_STRICT_MODE=true, check Authorization header and extract userID from token
+	if h.jwtStrictMode {
+		authHeader := c.Request().Header.Get("Authorization")
+		if authHeader == "" {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing authorization header"})
+		}
+
+		// Extract token from "Bearer <token>"
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid authorization header format"})
+		}
+
+		tokenString := parts[1]
+		if tokenString == "" {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "token cannot be empty"})
+		}
+
+		// Validate token
+		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, jwt.ErrSignatureInvalid
+			}
+			return []byte(h.jwtSecretKey), nil
+		})
+
+		if err != nil || !token.Valid {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid token"})
+		}
+
+		// Extract user UUID from token
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid token claims"})
+		}
+
+		userUUID, ok := claims["uuid"].(string)
+		if !ok || userUUID == "" {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid token: missing user UUID"})
+		}
+
+		// Generate new token pair for the user
+		tokenPair, err := h.authService.GenerateTokenPair(userUUID)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate token"})
+		}
+
+		return c.JSON(http.StatusOK, tokenPair)
 	}
 
-	tokenPair, err := h.authService.RefreshToken(req.RefreshToken)
-	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	// Non-strict mode: if userID is provided, generate new tokens
+	if req.UserID != "" {
+		tokenPair, err := h.authService.GenerateTokenPair(req.UserID)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate token"})
+		}
+		return c.JSON(http.StatusOK, tokenPair)
 	}
 
-	return c.JSON(http.StatusOK, tokenPair)
+	// Fallback: use refresh_token if provided
+	if req.RefreshToken != "" {
+		tokenPair, err := h.authService.RefreshToken(req.RefreshToken)
+		if err != nil {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusOK, tokenPair)
+	}
+
+	return c.JSON(http.StatusBadRequest, map[string]string{"error": "userID or refresh_token is required"})
 }
 
 func (h *HTTPHandler) AuthStatus(c echo.Context) error {
