@@ -587,6 +587,42 @@ func (s *RouletteService) LinkPreauthTokenToUser(ctx context.Context, preauthTok
 	return s.repo.UpdatePreauthTokenUserUUID(ctx, preauthToken, userUUID)
 }
 
+// GetUserIDByPreauthToken validates preauth token against session_id and IP, then returns user UUID
+func (s *RouletteService) GetUserIDByPreauthToken(ctx context.Context, preauthTokenStr string, sessionID string, ipAddress string) (string, error) {
+	if sessionID == "" {
+		return "", errors.New("X-SESSION-ID is required")
+	}
+
+	if ipAddress == "" {
+		return "", errors.New("IP address is required")
+	}
+
+	// Generate expected token from session_id + IP
+	expectedToken := generateTokenFromSessionAndIP(sessionID, ipAddress)
+
+	// Verify the provided preauth token matches the expected token
+	if preauthTokenStr != expectedToken {
+		return "", errors.New("preauth token does not match session_id and IP")
+	}
+
+	// Get preauth token from database
+	preauthToken, err := s.repo.GetPreauthToken(ctx, preauthTokenStr)
+	if err != nil {
+		return "", fmt.Errorf("failed to get preauth token: %w", err)
+	}
+
+	if preauthToken == nil {
+		return "", errors.New("preauth token not found")
+	}
+
+	// Check if user_uuid is set
+	if preauthToken.UserUUID == nil {
+		return "", errors.New("preauth token not linked to any user")
+	}
+
+	return *preauthToken.UserUUID, nil
+}
+
 // determinePrize determines the prize value based on event or default
 func (s *RouletteService) determinePrize(ctx context.Context, config *domain.RouletteConfig, roulette *domain.Roulette) (string, domain.PrizeType, error) {
 	// If this is a during_event roulette, get event rewards
