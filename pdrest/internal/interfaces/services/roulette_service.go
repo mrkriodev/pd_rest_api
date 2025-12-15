@@ -352,7 +352,7 @@ func (s *RouletteService) Spin(ctx context.Context, preauthTokenStr string, req 
 	}, nil
 }
 
-// TakePrize allows user to take the prize after completing all spins
+// TakePrize allows user to take the prize after any spin (not required to complete all spins)
 func (s *RouletteService) TakePrize(ctx context.Context, preauthTokenStr string, req *domain.TakePrizeRequest) (*domain.TakePrizeResponse, error) {
 	var preauthToken *domain.RoulettePreauthToken
 	var err error
@@ -414,10 +414,19 @@ func (s *RouletteService) TakePrize(ctx context.Context, preauthTokenStr string,
 			}
 		}
 	} else {
-		// Validate provided preauth token
-		preauthToken, err = s.repo.ValidatePreauthToken(ctx, preauthTokenStr)
+		// Get preauth token (allow used tokens, but check expiration)
+		preauthToken, err = s.repo.GetPreauthToken(ctx, preauthTokenStr)
 		if err != nil {
-			return nil, fmt.Errorf("invalid preauth token: %w", err)
+			return nil, fmt.Errorf("failed to get preauth token: %w", err)
+		}
+		if preauthToken == nil {
+			return nil, fmt.Errorf("preauth token not found")
+		}
+
+		// Check if token is expired (but allow used tokens)
+		nowMs := time.Now().UTC().UnixMilli()
+		if preauthToken.ExpiresAt < nowMs {
+			return nil, fmt.Errorf("preauth token expired")
 		}
 
 		// Check if user was unregistered (no user_uuid linked)
@@ -480,9 +489,9 @@ func (s *RouletteService) TakePrize(ctx context.Context, preauthTokenStr string,
 		return nil, errors.New("prize already taken but no prize found")
 	}
 
-	// Check if user has completed all spins
-	if roulette.SpinNumber < config.MaxSpins {
-		return nil, fmt.Errorf("must complete all %d spins before taking prize", config.MaxSpins)
+	// Check if user has spun at least once (prize must be available from a spin)
+	if roulette.SpinNumber == 0 {
+		return nil, errors.New("must spin at least once before taking prize")
 	}
 
 	// Get prize value from roulette (stored during spin)
