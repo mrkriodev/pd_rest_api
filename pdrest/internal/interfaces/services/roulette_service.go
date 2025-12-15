@@ -40,11 +40,21 @@ func NewRouletteService(r data.RouletteRepository, userRepo data.UserRepository,
 }
 
 // GetRouletteStatus gets the current status of roulette by preauth token
+// Allows used tokens (after spin) but checks expiration
 func (s *RouletteService) GetRouletteStatus(ctx context.Context, preauthToken string) (*domain.GetRouletteStatusResponse, error) {
-	// Validate and get preauth token
-	token, err := s.repo.ValidatePreauthToken(ctx, preauthToken)
+	// Get preauth token (without validating if it's used, since we want to check status after spin)
+	token, err := s.repo.GetPreauthToken(ctx, preauthToken)
 	if err != nil {
-		return nil, fmt.Errorf("invalid preauth token: %w", err)
+		return nil, fmt.Errorf("failed to get preauth token: %w", err)
+	}
+	if token == nil {
+		return nil, fmt.Errorf("preauth token not found")
+	}
+
+	// Check if token is expired (but allow used tokens)
+	nowMs := time.Now().UTC().UnixMilli()
+	if token.ExpiresAt < nowMs {
+		return nil, fmt.Errorf("preauth token expired")
 	}
 
 	// Get config
