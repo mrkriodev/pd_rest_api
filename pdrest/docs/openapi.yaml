@@ -144,23 +144,13 @@ paths:
   /auth/google/verify:
     get:
       summary: Verify Google OAuth token
+      description: |
+        Verifies a Google OAuth token for an existing user. The user must already be registered in the system.
+        For first-time Google OAuth registration, use POST /auth/google/register instead.
       tags:
         - Authentication
       security:
         - GoogleAuth: []
-      parameters:
-        - name: preauth_token
-          in: query
-          required: false
-          schema:
-            type: string
-          description: Optional preauth token to link to user after successful authentication (can also be provided via X-Preauth-Token header)
-        - name: X-Preauth-Token
-          in: header
-          required: false
-          schema:
-            type: string
-          description: Optional preauth token to link to user after successful authentication
       responses:
         '200':
           description: JWT token pair
@@ -170,6 +160,60 @@ paths:
                 $ref: '#/components/schemas/TokenPair'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /auth/google/register:
+    post:
+      summary: Register a new user with Google OAuth
+      description: |
+        Registers a new user with Google OAuth information. This endpoint is called when a user first authenticates with Google.
+        Requires a valid Google ID token in the Authorization header, and userID (UUID) and preauth_token in the request body.
+        The preauth_token will be linked to the user after successful registration.
+      tags:
+        - Authentication
+      security:
+        - GoogleAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userID
+                - preauth_token
+              properties:
+                userID:
+                  type: string
+                  description: User UUID (must already exist in the system, typically created via session/IP)
+                preauth_token:
+                  type: string
+                  description: Preauth token to link to the user after successful registration
+      responses:
+        '200':
+          description: JWT token pair
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Conflict - Google account already registered to another user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /auth/telegram/verify:
     get:
@@ -595,9 +639,9 @@ paths:
 
   /roulette/take-prize:
     post:
-      summary: Take prize after completing all spins
+      summary: Take prize after any spin
       description: |
-        Takes the prize after completing all spins. If preauth_token is not provided,
+        Takes the prize after any spin (not required to complete all spins). If preauth_token is not provided,
         it will be generated from X-SESSION-ID and IP address. A user will be created
         if X-SESSION-ID and IP are provided but the user doesn't exist.
         Returns preauth_token in response if the user was unregistered.
