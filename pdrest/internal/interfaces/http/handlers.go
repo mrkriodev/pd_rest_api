@@ -65,6 +65,7 @@ func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingServi
 	auth.GET("/status", h.AuthStatus, JWTMiddleware(jwtSecretKey, jwtStrictMode))
 	googleAuth := auth.Group("/google")
 	googleAuth.GET("/verify", h.VerifyGoogleToken)
+	googleAuth.POST("/register", h.RegisterGoogleUser)
 	telegramAuth := auth.Group("/telegram")
 	telegramAuth.GET("/verify", h.VerifyTelegramToken)
 
@@ -620,12 +621,6 @@ func (h *HTTPHandler) VerifyGoogleToken(c echo.Context) error {
 
 	googleToken := parts[1]
 
-	// Get optional preauth_token from header or query parameter
-	preauthToken := c.Request().Header.Get("X-Preauth-Token")
-	if preauthToken == "" {
-		preauthToken = c.QueryParam("preauth_token")
-	}
-
 	// Validate Google token
 	googleUserInfo, err := h.googleAuthService.ValidateWithGoogle(googleToken)
 	if err != nil {
@@ -638,17 +633,85 @@ func (h *HTTPHandler) VerifyGoogleToken(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "user not found"})
 	}
 
-	// Link preauth token to user if provided
-	if preauthToken != "" && h.rouletteService != nil {
-		ctx := context.Background()
-		if err := h.rouletteService.LinkPreauthTokenToUser(ctx, preauthToken, user.UserID); err != nil {
-			// Log error but don't fail the auth request
-			_ = err
+	// Generate JWT token pair for the user
+	tokenPair, err := h.authService.GenerateTokenPair(user.UserID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate token"})
+	}
+
+	return c.JSON(http.StatusOK, tokenPair)
+}
+
+// RegisterGoogleUser registers a new user with Google OAuth information
+// This endpoint is called when a user first registers with Google OAuth
+func (h *HTTPHandler) RegisterGoogleUser(c echo.Context) error {
+	if h.googleAuthService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "Google authentication service unavailable"})
+	}
+
+	if h.userService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "User service unavailable"})
+	}
+
+	// Get Google token from Authorization header
+	authHeader := c.Request().Header.Get("Authorization")
+	if authHeader == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing authorization header"})
+	}
+
+	// Extract token from "Bearer <token>"
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || parts[0] != "Bearer" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid authorization header format"})
+	}
+
+	googleToken := parts[1]
+
+	// Validate Google token
+	googleUserInfo, err := h.googleAuthService.ValidateWithGoogle(googleToken)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
+
+	// Parse request body
+	var req struct {
+		UserID       string `json:"userID"`
+		PreauthToken string `json:"preauth_token"`
+	}
+
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	if req.UserID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "userID is required"})
+	}
+
+	if req.PreauthToken == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "preauth_token is required"})
+	}
+
+	// Check if Google ID is already registered to a different user
+	existingUser, err := h.userService.GetUserByGoogleID(googleUserInfo.ID)
+	if err == nil && existingUser != nil && existingUser.UserID != req.UserID {
+		return c.JSON(http.StatusConflict, map[string]string{"error": "Google account is already registered to another user"})
+	}
+
+	// Register user with Google info
+	ctx := context.Background()
+	if err := h.userService.RegisterUserWithGoogle(ctx, req.UserID, googleUserInfo.ID, googleUserInfo.Email, googleUserInfo.Name); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Link preauth token to user
+	if h.rouletteService != nil {
+		if err := h.rouletteService.LinkPreauthTokenToUser(ctx, req.PreauthToken, req.UserID); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "failed to link preauth token: " + err.Error()})
 		}
 	}
 
 	// Generate JWT token pair for the user
-	tokenPair, err := h.authService.GenerateTokenPair(user.UserID)
+	tokenPair, err := h.authService.GenerateTokenPair(req.UserID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate token"})
 	}
