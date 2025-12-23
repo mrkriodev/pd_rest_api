@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"pdrest/internal/config"
@@ -49,6 +53,7 @@ func main() {
 	var eventService *services.EventService
 	var rouletteService *services.RouletteService
 	var betService *services.BetService
+	var betScheduler *services.BetScheduler
 	var achievementService *services.AchievementService
 	authService := services.NewAuthService(cfg.JWT.SecretKey, cfg.JWT.AccessTokenTTL, cfg.JWT.RefreshTokenTTL)
 
@@ -110,17 +115,42 @@ func main() {
 		eventService = services.NewEventService(eventRepo)
 		rouletteService = services.NewRouletteService(rouletteRepo, repo, prizeRepo, prizeValueRepo, eventRepo)
 		priceProvider := services.NewPriceProvider("") // Uses Binance API by default
-		betService = services.NewBetService(betRepo, priceProvider)
+		betScheduler = services.NewBetScheduler(betRepo, priceProvider)
+		betService = services.NewBetService(betRepo, priceProvider, betScheduler)
 		achievementService = services.NewAchievementService(achievementRepo)
 	}
 
 	// Register HTTP handlers (eventService, rouletteService, betService, and achievementService may be nil if database unavailable)
 	http.NewHTTPHandler(e, userService, ratingService, eventService, rouletteService, betService, achievementService, authService, googleAuthService, telegramAuthService, cfg.JWT.SecretKey, cfg.JWT.StrictMode)
 
-	// Start server
+	// Start server in a goroutine
 	addr := cfg.GetAddress()
 	fmt.Printf("Server starting on %s\n", addr)
-	if err := e.Start(addr); err != nil {
+	
+	go func() {
+		if err := e.Start(addr); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	// Wait for interrupt signal to gracefully shutdown the server
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	<-quit
+	
+	log.Println("Shutting down server...")
+	
+	// Gracefully shutdown bet scheduler first
+	if betScheduler != nil {
+		betScheduler.Shutdown()
+	}
+	
+	// Gracefully shutdown Echo server
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := e.Shutdown(ctx); err != nil {
 		log.Fatal(err)
 	}
+	
+	log.Println("Server exited")
 }

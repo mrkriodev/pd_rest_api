@@ -693,9 +693,18 @@ func (h *HTTPHandler) RegisterGoogleUser(c echo.Context) error {
 
 	// Check if Google ID is already registered to a different user
 	existingUser, err := h.userService.GetUserByGoogleID(googleUserInfo.ID)
-	if err == nil && existingUser != nil && existingUser.UserID != req.UserID {
-		return c.JSON(http.StatusConflict, map[string]string{"error": "Google account is already registered to another user"})
+	if err == nil && existingUser != nil {
+		// User exists with this Google ID
+		if existingUser.UserID != req.UserID {
+			// Google ID is registered to a different user - conflict
+			return c.JSON(http.StatusConflict, map[string]string{"error": "Google account is already registered to another user"})
+		}
+		// Same user - allow update (will be handled by CreateOrUpdateUserWithGoogleInfo)
+	} else if err != nil && !strings.Contains(err.Error(), "not found") {
+		// Database error (not "user not found") - return error
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to check existing user: " + err.Error()})
 	}
+	// If user not found (err != nil with "not found" message) or err == nil with existingUser == nil, proceed with registration
 
 	// Register user with Google info
 	ctx := context.Background()

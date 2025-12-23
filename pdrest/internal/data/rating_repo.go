@@ -30,10 +30,10 @@ func NewPostgresRatingRepository(pool *pgxpool.Pool) *PostgresRatingRepository {
 func (r *PostgresRatingRepository) GetUserRatingTotals(ctx context.Context, userUUID string) (*domain.RatingTotals, error) {
 	query := `
 		SELECT
-			COALESCE(SUM(points) FILTER (WHERE source = 'from_event'), 0) AS from_event_points,
-			COALESCE(SUM(points) FILTER (WHERE source = 'bet_bonus'), 0) AS bet_bonus_points,
-			COALESCE(SUM(points) FILTER (WHERE source = 'promo_bonus'), 0) AS promo_bonus_points,
-			COALESCE(SUM(points) FILTER (WHERE source = 'servivce_bonus'), 0) AS service_bonus_points
+			COALESCE(SUM(points) FILTER (WHERE source = 'from_event'), 0)::BIGINT AS from_event_points,
+			COALESCE(SUM(points) FILTER (WHERE source = 'bet_bonus'), 0)::BIGINT AS bet_bonus_points,
+			COALESCE(SUM(points) FILTER (WHERE source = 'promo_bonus'), 0)::BIGINT AS promo_bonus_points,
+			COALESCE(SUM(points) FILTER (WHERE source = 'servivce_bonus'), 0)::BIGINT AS service_bonus_points
 		FROM rating
 		WHERE user_uuid = $1
 	`
@@ -56,7 +56,7 @@ func (r *PostgresRatingRepository) GetGlobalRating(ctx context.Context, limit, o
 	query := `
 		SELECT 
 			user_uuid::text AS user_uuid,
-			COALESCE(SUM(points), 0) AS total_points
+			COALESCE(SUM(points), 0)::BIGINT AS total_points
 		FROM rating
 		GROUP BY user_uuid
 		ORDER BY total_points DESC, user_uuid ASC
@@ -89,7 +89,7 @@ func (r *PostgresRatingRepository) GetFriendsRatings(ctx context.Context, userUU
 	query := `
 		SELECT 
 			u.user_uuid::text AS friend_uuid,
-			COALESCE(SUM(r.points), 0) AS total_points
+			COALESCE(SUM(r.points), 0)::BIGINT AS total_points
 		FROM users u
 		LEFT JOIN rating r ON r.user_uuid = u.user_uuid
 		WHERE u.referrer_user_uuid = $1

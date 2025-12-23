@@ -12,12 +12,14 @@ import (
 type BetService struct {
 	repo          data.BetRepository
 	priceProvider *PriceProvider
+	scheduler     *BetScheduler
 }
 
-func NewBetService(r data.BetRepository, priceProvider *PriceProvider) *BetService {
+func NewBetService(r data.BetRepository, priceProvider *PriceProvider, scheduler *BetScheduler) *BetService {
 	return &BetService{
 		repo:          r,
 		priceProvider: priceProvider,
+		scheduler:     scheduler,
 	}
 }
 
@@ -60,6 +62,18 @@ func (s *BetService) OpenBet(ctx context.Context, userUUID string, req *domain.O
 
 	if err := s.repo.CreateBet(ctx, bet); err != nil {
 		return nil, fmt.Errorf("failed to create bet: %w", err)
+	}
+
+	// Schedule bet closing if scheduler is available
+	// This will fetch price from Binance when bet opens, then schedule another fetch after timeframe
+	if s.scheduler != nil {
+		// Fetch current price from Binance when bet opens (optional, for verification)
+		// The main price fetch happens at close time
+		if err := s.scheduler.ScheduleBetClosing(bet.ID, bet.Pair, bet.OpenTime, bet.Timeframe); err != nil {
+			// Log error but don't fail bet creation
+			// The bet can still be closed manually via GetBetStatus
+			_ = err
+		}
 	}
 
 	return &domain.OpenBetResponse{
