@@ -1026,6 +1026,9 @@ components:
         closePrice:
           type: number
           nullable: true
+        openTime:
+          type: string
+          format: date-time
 
     Bet:
       type: object

@@ -255,7 +255,8 @@ Get bet status with current price if timeframe has passed.
   "pair": "ETH/USDT",
   "timeframe": 60,
   "openPrice": 2765,
-  "closePrice": 2785
+  "closePrice": 2785,
+  "openTime": "2025-11-09T12:35:00Z"
 }
 ```
 
@@ -266,6 +267,7 @@ Get bet status with current price if timeframe has passed.
 - `timeframe` - Timeframe in seconds
 - `openPrice` - Opening price
 - `closePrice` - Closing price (null if timeframe hasn't passed yet)
+- `openTime` - Opening time
 
 **Note:** If the timeframe has passed and `closePrice` is not set, the system will automatically fetch the current price from Binance API and update the bet.
 

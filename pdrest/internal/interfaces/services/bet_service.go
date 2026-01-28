@@ -129,6 +129,7 @@ func (s *BetService) GetBetStatus(ctx context.Context, betID int, userUUID strin
 		Timeframe:  bet.Timeframe,
 		OpenPrice:  bet.OpenPrice,
 		ClosePrice: bet.ClosePrice,
+		OpenTime:   bet.OpenTime,
 	}, nil
 }
 
