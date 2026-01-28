@@ -15,6 +15,7 @@ type BetRepository interface {
 	GetBetByID(ctx context.Context, betID int, userUUID string) (*domain.Bet, error)
 	UpdateBetClosePrice(ctx context.Context, betID int, closePrice float64, closeTime time.Time) error
 	GetWinningBetsByUser(ctx context.Context, userUUID string) ([]domain.Bet, error)
+	GetUnfinishedBetsByUser(ctx context.Context, userUUID string) ([]domain.Bet, error)
 }
 
 type PostgresBetRepository struct {
@@ -175,6 +176,56 @@ func (r *PostgresBetRepository) GetWinningBetsByUser(ctx context.Context, userUU
 	return bets, nil
 }
 
+func (r *PostgresBetRepository) GetUnfinishedBetsByUser(ctx context.Context, userUUID string) ([]domain.Bet, error) {
+	query := `
+		SELECT id, user_uuid, side, sum, pair, timeframe, open_price, close_price, open_time, close_time, created_at, updated_at
+		FROM bets
+		WHERE user_uuid = $1
+		  AND close_price IS NULL
+		ORDER BY open_time DESC
+	`
+
+	rows, err := r.pool.Query(ctx, query, userUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get unfinished bets: %w", err)
+	}
+	defer rows.Close()
+
+	var bets []domain.Bet
+	for rows.Next() {
+		var bet domain.Bet
+		var closePrice *float64
+		var closeTime *time.Time
+
+		if err := rows.Scan(
+			&bet.ID,
+			&bet.UserID,
+			&bet.Side,
+			&bet.Sum,
+			&bet.Pair,
+			&bet.Timeframe,
+			&bet.OpenPrice,
+			&closePrice,
+			&bet.OpenTime,
+			&closeTime,
+			&bet.CreatedAt,
+			&bet.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan unfinished bet: %w", err)
+		}
+
+		bet.ClosePrice = closePrice
+		bet.CloseTime = closeTime
+		bets = append(bets, bet)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating unfinished bets: %w", err)
+	}
+
+	return bets, nil
+}
+
 type InMemoryBetRepository struct{}
 
 func NewInMemoryBetRepository() *InMemoryBetRepository {
@@ -197,5 +248,9 @@ func (r *InMemoryBetRepository) UpdateBetClosePrice(ctx context.Context, betID i
 }
 
 func (r *InMemoryBetRepository) GetWinningBetsByUser(ctx context.Context, userUUID string) ([]domain.Bet, error) {
+	return []domain.Bet{}, nil
+}
+
+func (r *InMemoryBetRepository) GetUnfinishedBetsByUser(ctx context.Context, userUUID string) ([]domain.Bet, error) {
 	return []domain.Bet{}, nil
 }

@@ -162,4 +162,3 @@ func (s *BetScheduler) GetActiveBetsCount() int {
 	defer s.mu.RUnlock()
 	return len(s.timers)
 }
-

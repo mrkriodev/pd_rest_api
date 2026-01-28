@@ -43,11 +43,11 @@ The `reward` column stores a JSON array of reward objects:
 
 ```json
 [
-  { "place": "1-3", "value": "0.0006 ETH" },
-  { "place": "4-5", "value": "0.0003 ETH" },
-  { "place": "6-7", "value": "0.0003 ETH" },
-  { "place": "8", "value": "0.0003 ETH" },
-  { "place": "9-10", "value": "0.0001 ETH" }
+  { "place": "1-3", "value": "100 USDT" },
+  { "place": "4-5", "value": "50 USDT" },
+  { "place": "6-7", "value": "50 USDT" },
+  { "place": "8", "value": "50 USDT" },
+  { "place": "9-10", "value": "10 USDT" }
 ]
 ```
 
@@ -71,11 +71,11 @@ VALUES (
     1733054400000,
     'global',
     '[
-        {"place": "1-3", "value": "0.0006 ETH"},
-        {"place": "4-5", "value": "0.0003 ETH"},
-        {"place": "6-7", "value": "0.0003 ETH"},
-        {"place": "8", "value": "0.0003 ETH"},
-        {"place": "9-10", "value": "0.0001 ETH"}
+        {"place": "1-3", "value": "100 USDT"},
+        {"place": "4-5", "value": "50 USDT"},
+        {"place": "6-7", "value": "50 USDT"},
+        {"place": "8", "value": "50 USDT"},
+        {"place": "9-10", "value": "10 USDT"}
     ]'::jsonb,
     'Your intuition and team spirit are what matter most. Join a squad or create your own...'
 );
@@ -140,11 +140,11 @@ The table structure matches the API response format:
       "deadline": "2025-12-01T12:00:00Z",
       "tags": "global",
       "reward": [
-        { "place": "1-3", "value": "0.0006 ETH" },
-        { "place": "4-5", "value": "0.0003 ETH" },
-        { "place": "6-7", "value": "0.0003 ETH" },
-        { "place": "8", "value": "0.0003 ETH" },
-        { "place": "9-10", "value": "0.0001 ETH" }
+        { "place": "1-3", "value": "100 USDT" },
+        { "place": "4-5", "value": "50 USDT" },
+        { "place": "6-7", "value": "50 USDT" },
+        { "place": "8", "value": "50 USDT" },
+        { "place": "9-10", "value": "10 USDT" }
       ],
       "info": "Your intuition and team spirit are what matter most. Join a squad or create your own..."
     }

@@ -17,7 +17,7 @@ type Prize struct {
 	PrizeValueID   *int      `json:"prize_value_id,omitempty"`   // Reference to prize_values table
 	PreauthTokenID *int      `json:"preauth_token_id,omitempty"` // Optional, for tracking
 	RouletteID     *int      `json:"roulette_id,omitempty"`
-	PrizeValue     string    `json:"prize_value"` // Prize value text (e.g., "0.01 ETH")
+	PrizeValue     string    `json:"prize_value"` // Prize value text (e.g., "100 USDT")
 	PrizeType      PrizeType `json:"prize_type"`
 	AwardedAt      int64     `json:"awarded_at"`
 	CreatedAt      int64     `json:"created_at"`

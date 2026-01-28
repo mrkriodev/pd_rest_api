@@ -341,8 +341,8 @@ func (s *RouletteService) Spin(ctx context.Context, preauthTokenStr string, req 
 		Label:     selectedPrizeValue.Label,
 	}
 	reward := domain.SpinReward{
-		Type:   "eth",
-		Amount: float64(selectedPrizeValue.Value) / 1e9, // Convert points to ETH (1 ETH = 10^9 points)
+		Type:   "usdt",
+		Amount: float64(selectedPrizeValue.Value), // Prize values are stored as whole USDT
 	}
 
 	return &domain.SpinResponse{

@@ -10,7 +10,7 @@ const (
 	RatingSourceServiceBonus RatingSource = "servivce_bonus"
 )
 
-// RatingTotals aggregates points per source for a user.
+// RatingTotals aggregates USDT points (1 USDT = 1 point) per source for a user.
 type RatingTotals struct {
 	FromEvent    int64 `json:"from_event"`
 	BetBonus     int64 `json:"bet_bonus"`
@@ -23,7 +23,7 @@ func (t RatingTotals) TotalPoints() int64 {
 	return t.FromEvent + t.BetBonus + t.PromoBonus + t.ServiceBonus
 }
 
-// UserAssets represents a user's points portfolio.
+// UserAssets represents a user's USDT points portfolio.
 type UserAssets struct {
 	UserID      string       `json:"userID"`
 	Points      RatingTotals `json:"points"`

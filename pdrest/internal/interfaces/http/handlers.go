@@ -81,6 +81,7 @@ func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingServi
 	user.GET("/achievements", h.UserAchievements)
 	user.POST("/openbet", h.OpenBet)
 	user.GET("/betstatus", h.BetStatus)
+	user.GET("/unfinished_bets/:uuid", h.UnfinishedBets)
 
 	// Roulette endpoints
 	roulette := api.Group("/roulette")
@@ -114,6 +115,7 @@ Available endpoints:
 - GET /api/user/profile/:uuid - Get user profile
 - POST /api/user/openbet - Create a new bet
 - GET /api/user/betstatus?id=<bet_id> - Get bet status
+- GET /api/user/unfinished_bets/:uuid - Get unfinished bets for user
 
 For full documentation, see: /api/docs/openapi.yaml or /api/docs/openapi.json
 `
@@ -509,6 +511,27 @@ func (h *HTTPHandler) BetStatus(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, response)
+}
+
+func (h *HTTPHandler) UnfinishedBets(c echo.Context) error {
+	if h.betService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for bets"})
+	}
+
+	userUUID := c.Param("uuid")
+	if userUUID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "uuid is required"})
+	}
+
+	ctx := context.Background()
+	bets, err := h.betService.GetUnfinishedBetsByUser(ctx, userUUID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"bets": bets,
+	})
 }
 
 func (h *HTTPHandler) RefreshToken(c echo.Context) error {

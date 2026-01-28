@@ -276,6 +276,35 @@ Get bet status with current price if timeframe has passed.
 }
 ```
 
+#### GET /api/user/unfinished_bets/:uuid
+Get unfinished bets (closePrice is null) for a user.
+
+**Headers:**
+- `Authorization: Bearer <jwt_token>` (required)
+
+**Path Parameters:**
+- `uuid` (required) - User UUID
+
+**Response:**
+```json
+{
+  "bets": [
+    {
+      "id": 123,
+      "userID": "user-uuid",
+      "side": "pump",
+      "sum": 1000,
+      "pair": "ETH/USDT",
+      "timeframe": 60,
+      "openPrice": 2765,
+      "openTime": "2025-11-09T12:35:00Z",
+      "closePrice": null,
+      "closeTime": null
+    }
+  ]
+}
+```
+
 ---
 
 ### Roulette Endpoints

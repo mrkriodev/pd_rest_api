@@ -62,7 +62,7 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
-  /globalrating:
+  /c:
     get:
       summary: Get global rating (top users by points)
       tags:
@@ -362,7 +362,7 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
     post:
-      summary: Get user assets (points) - POST method
+      summary: Get user assets (USDT points) - POST method
       description: |
         Same as GET /user/assets but accepts userId in request body.
         When JWT_STRICT_MODE=true: Validates JWT token from Authorization header. If userId is provided, verifies it matches the token.
@@ -383,7 +383,7 @@ paths:
                   description: User ID (required when JWT_STRICT_MODE=false, optional when JWT_STRICT_MODE=true for verification)
       responses:
         '200':
-          description: Aggregated user points
+          description: Aggregated user USDT points (integer)
           content:
             application/json:
               schema:
@@ -501,6 +501,33 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /user/unfinished_bets/{uuid}:
+    get:
+      summary: Get unfinished bets for user
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Unfinished bets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnfinishedBetsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /roulette/status:
     get:
@@ -1000,6 +1027,49 @@ components:
           type: number
           nullable: true
 
+    Bet:
+      type: object
+      properties:
+        id:
+          type: integer
+        userID:
+          type: string
+        side:
+          type: string
+          enum: [pump, dump]
+        sum:
+          type: number
+        pair:
+          type: string
+        timeframe:
+          type: integer
+        openPrice:
+          type: number
+        closePrice:
+          type: number
+          nullable: true
+        openTime:
+          type: string
+          format: date-time
+        closeTime:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+
+    UnfinishedBetsResponse:
+      type: object
+      properties:
+        bets:
+          type: array
+          items:
+            $ref: '#/components/schemas/Bet'
+
     SpinRequest:
       type: object
       properties:
@@ -1030,11 +1100,10 @@ components:
           properties:
             type:
               type: string
-              description: Type of reward (e.g., "eth")
+              description: Type of reward (e.g., "usdt")
             amount:
-              type: number
-              format: float
-              description: Amount of the reward
+              type: integer
+              description: Amount of the reward in USDT
 
     TakePrizeRequest:
       type: object

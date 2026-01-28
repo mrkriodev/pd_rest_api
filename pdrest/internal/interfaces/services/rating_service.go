@@ -179,8 +179,8 @@ func (s *RatingService) processBets(bets []domain.Bet, maxCreatedAt *int64) (int
 			}
 		}
 
-		// Convert bet sum to points (assuming bets are in ETH: 1 ETH = 10^9 points)
-		points := int64(bet.Sum * 1e9) // 1 ETH = 10^9 points
+		// Convert bet sum to points (1 USDT = 1 point)
+		points := int64(bet.Sum)
 		totalPoints += points
 	}
 	return totalPoints, nil
@@ -196,8 +196,13 @@ func (s *RatingService) parsePrizeValueToPoints(prizeValue string) (int64, error
 		return 0, fmt.Errorf("prize value is empty")
 	}
 
-	// Parse as integer (prize values are now stored as points directly)
-	value, err := strconv.ParseInt(prizeValue, 10, 64)
+	normalized := strings.TrimSpace(strings.ToUpper(prizeValue))
+	if strings.Contains(normalized, "USDT") {
+		normalized = strings.TrimSpace(strings.ReplaceAll(normalized, "USDT", ""))
+	}
+
+	// Parse as integer (prize values are stored as whole USDT points)
+	value, err := strconv.ParseInt(normalized, 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("failed to parse prize value as integer: %w", err)
 	}

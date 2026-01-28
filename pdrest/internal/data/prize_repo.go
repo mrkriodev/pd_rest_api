@@ -28,7 +28,7 @@ func NewPostgresPrizeRepository(pool *pgxpool.Pool) *PostgresPrizeRepository {
 
 func (r *PostgresPrizeRepository) CreatePrize(ctx context.Context, prize *domain.Prize) error {
 	query := `
-		INSERT INTO prizes (event_id, user_uuid, prize_value_id, preauth_token_id, roulette_id, prize_value, prize_type, awarded_at, created_at)
+		INSERT INTO got_prizes (event_id, user_uuid, prize_value_id, preauth_token_id, roulette_id, prize_value, prize_type, awarded_at, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id
 	`
@@ -70,7 +70,7 @@ func (r *PostgresPrizeRepository) CreatePrize(ctx context.Context, prize *domain
 func (r *PostgresPrizeRepository) GetPrizeByID(ctx context.Context, id int) (*domain.Prize, error) {
 	query := `
 		SELECT id, event_id, user_uuid, prize_value_id, preauth_token_id, roulette_id, prize_value, prize_type, awarded_at, created_at
-		FROM prizes
+		FROM got_prizes
 		WHERE id = $1
 	`
 
@@ -107,7 +107,7 @@ func (r *PostgresPrizeRepository) GetPrizeByID(ctx context.Context, id int) (*do
 func (r *PostgresPrizeRepository) GetPrizesByUserID(ctx context.Context, userID string) ([]domain.Prize, error) {
 	query := `
 		SELECT id, event_id, user_uuid, prize_value_id, preauth_token_id, roulette_id, prize_value, prize_type, awarded_at, created_at
-		FROM prizes
+		FROM got_prizes
 		WHERE user_uuid = $1
 		ORDER BY awarded_at DESC
 	`
@@ -154,7 +154,7 @@ func (r *PostgresPrizeRepository) GetPrizesByUserID(ctx context.Context, userID 
 func (r *PostgresPrizeRepository) GetPrizesByPreauthTokenID(ctx context.Context, preauthTokenID int) ([]domain.Prize, error) {
 	query := `
 		SELECT id, event_id, user_uuid, prize_value_id, preauth_token_id, roulette_id, prize_value, prize_type, awarded_at, created_at
-		FROM prizes
+		FROM got_prizes
 		WHERE preauth_token_id = $1
 		ORDER BY awarded_at DESC
 	`

@@ -62,12 +62,12 @@ curl -X POST "http://localhost:8080/api/roulette/spin" \
 {
   "result": {
     "segmentId": "2",
-    "label": "0.01 ETH"
+    "label": "100 USDT"
   },
   "spinsLeft": 2,
   "reward": {
-    "type": "eth",
-    "amount": 0.01
+    "type": "usdt",
+    "amount": 100
   }
 }
 ```
@@ -120,7 +120,7 @@ curl -X POST "http://localhost:8080/api/roulette/take-prize" \
 ```json
 {
   "success": true,
-  "prize": "0.01 ETH",
+  "prize": "100 USDT",
   "message": "Prize taken successfully",
   "preauth_token": "abc123..." // Возвращается только для неавторизованных пользователей
 }

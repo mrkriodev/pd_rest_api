@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"pdrest/internal/data"
 	"pdrest/internal/domain"
 	"time"
@@ -32,6 +33,9 @@ func (s *BetService) OpenBet(ctx context.Context, userUUID string, req *domain.O
 	// Validate sum
 	if req.Sum <= 0 {
 		return nil, errors.New("sum must be greater than 0")
+	}
+	if req.Sum != math.Trunc(req.Sum) {
+		return nil, errors.New("sum must be a whole number of USDT")
 	}
 
 	// Validate pair
@@ -126,4 +130,13 @@ func (s *BetService) GetBetStatus(ctx context.Context, betID int, userUUID strin
 		OpenPrice:  bet.OpenPrice,
 		ClosePrice: bet.ClosePrice,
 	}, nil
+}
+
+func (s *BetService) GetUnfinishedBetsByUser(ctx context.Context, userUUID string) ([]domain.Bet, error) {
+	bets, err := s.repo.GetUnfinishedBetsByUser(ctx, userUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get unfinished bets: %w", err)
+	}
+
+	return bets, nil
 }

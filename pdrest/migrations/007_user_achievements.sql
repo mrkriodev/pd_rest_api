@@ -6,11 +6,11 @@ CREATE TABLE IF NOT EXISTS user_achievements (
     user_uuid UUID NOT NULL,
     achievement_id VARCHAR(50) NOT NULL,
     earned_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT * 1000,
-    
+
     -- Foreign keys
     CONSTRAINT fk_user_achievements_user FOREIGN KEY (user_uuid) REFERENCES users(user_uuid) ON DELETE CASCADE,
     CONSTRAINT fk_user_achievements_achievement FOREIGN KEY (achievement_id) REFERENCES achievements(id) ON DELETE CASCADE,
-    
+
     -- Unique constraint: a user can only earn an achievement once
     CONSTRAINT uq_user_achievement UNIQUE (user_uuid, achievement_id)
 );

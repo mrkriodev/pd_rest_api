@@ -1,4 +1,4 @@
--- Create rating table to store user points
+-- Create rating table to store user points (1 USDT = 1 point)
 
 CREATE TABLE IF NOT EXISTS rating (
     id SERIAL PRIMARY KEY,
@@ -16,6 +16,6 @@ CREATE TABLE IF NOT EXISTS rating (
 
 COMMENT ON TABLE rating IS 'Stores user rating points from multiple sources';
 COMMENT ON COLUMN rating.user_uuid IS 'Reference to users.user_uuid';
-COMMENT ON COLUMN rating.points IS 'Number of points awarded';
+COMMENT ON COLUMN rating.points IS 'Number of points awarded (USDT)';
 COMMENT ON COLUMN rating.source IS 'Point source: from_event, bet_bonus, promo_bonus, servivce_bonus';
 
