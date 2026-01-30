@@ -735,24 +735,27 @@ func (h *HTTPHandler) RegisterGoogleUser(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
 
-	// Parse request body
-	var req struct {
-		UserID string `json:"userID"`
+	// Get X-SESSION-ID header (mandatory)
+	sessionID := c.Request().Header.Get("X-SESSION-ID")
+	if sessionID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "X-SESSION-ID header is required"})
 	}
 
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-	}
-
-	if req.UserID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "userID is required"})
+	// Find user by session_id
+	ctx := context.Background()
+	sessionUser, err := h.userService.GetUserBySessionID(ctx, sessionID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "user not found for session_id"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	// Check if Google ID is already registered to a different user
 	existingUser, err := h.userService.GetUserByGoogleID(googleUserInfo.ID)
 	if err == nil && existingUser != nil {
 		// User exists with this Google ID
-		if existingUser.UserID != req.UserID {
+		if existingUser.UserID != sessionUser.UserID {
 			// Google ID is registered to a different user - conflict
 			return c.JSON(http.StatusConflict, map[string]string{"error": "Google account is already registered to another user"})
 		}
@@ -764,13 +767,12 @@ func (h *HTTPHandler) RegisterGoogleUser(c echo.Context) error {
 	// If user not found (err != nil with "not found" message) or err == nil with existingUser == nil, proceed with registration
 
 	// Register user with Google info
-	ctx := context.Background()
-	if err := h.userService.RegisterUserWithGoogle(ctx, req.UserID, googleUserInfo.ID, googleUserInfo.Email, googleUserInfo.Name); err != nil {
+	if err := h.userService.RegisterUserWithGoogle(ctx, sessionUser.UserID, googleUserInfo.ID, googleUserInfo.Email, googleUserInfo.Name); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	// Generate JWT token pair for the user
-	tokenPair, err := h.authService.GenerateTokenPair(req.UserID)
+	tokenPair, err := h.authService.GenerateTokenPair(sessionUser.UserID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate token"})
 	}

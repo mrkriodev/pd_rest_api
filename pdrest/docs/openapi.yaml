@@ -168,23 +168,28 @@ paths:
       summary: Register a new user with Google OAuth
       description: |
         Registers a new user with Google OAuth information. This endpoint is called when a user first authenticates with Google.
-        Requires a valid Google ID token in the Authorization header and userID (UUID) in the request body.
+        Requires a valid Google ID token in the Authorization header and X-SESSION-ID header.
       tags:
         - Authentication
       security:
         - GoogleAuth: []
+      parameters:
+        - name: X-SESSION-ID
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Session ID to link existing user to Google info
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
               type: object
-              required:
-                - userID
               properties:
                 userID:
                   type: string
-                  description: User UUID (must already exist in the system, typically created via session/IP)
+                  description: Deprecated. Use X-SESSION-ID header instead.
       responses:
         '200':
           description: JWT token pair
