@@ -944,14 +944,23 @@ func (h *HTTPHandler) GetRouletteStatus(c echo.Context) error {
 		if ipAddress == "" {
 			ipAddress = c.RealIP()
 		}
-		if ipAddress == "" {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "could not determine IP address"})
+		// Ensure user exists for session_id
+		ctx := context.Background()
+		if h.userService != nil {
+			if _, err := h.userService.GetUserBySessionID(ctx, sessionID); err != nil {
+				if strings.Contains(err.Error(), "not found") {
+					return c.JSON(http.StatusUnauthorized, map[string]string{"error": "user not found for session_id"})
+				}
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
 		}
 
-		// Generate preauth token from session_id + IP (same logic as GetPreauthToken)
-		ctx := context.Background()
-		preauthToken, err = h.rouletteService.GetPreauthToken(ctx, sessionID, ipAddress)
+		// Get existing preauth token from session_id + IP (do not create a new one)
+		preauthToken, err = h.rouletteService.GetExistingPreauthToken(ctx, sessionID, ipAddress)
 		if err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+			}
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
 	} else {

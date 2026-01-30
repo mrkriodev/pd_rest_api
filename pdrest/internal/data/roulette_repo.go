@@ -22,6 +22,7 @@ type RouletteRepository interface {
 	// Preauth token methods
 	CreatePreauthToken(ctx context.Context, token *domain.RoulettePreauthToken) error
 	GetPreauthToken(ctx context.Context, token string) (*domain.RoulettePreauthToken, error)
+	GetPreauthTokenByUserUUID(ctx context.Context, userUUID string) (*domain.RoulettePreauthToken, error)
 	UpdatePreauthTokenUserUUID(ctx context.Context, token string, userUUID string) error
 	MarkPreauthTokenAsUsed(ctx context.Context, tokenID int) error
 	ValidatePreauthToken(ctx context.Context, token string) (*domain.RoulettePreauthToken, error)
@@ -217,6 +218,43 @@ func (r *PostgresRouletteRepository) GetPreauthToken(ctx context.Context, token 
 	}
 
 	preauthToken.UserUUID = userUUIDPtr
+	return &preauthToken, nil
+}
+
+// GetPreauthTokenByUserUUID retrieves the latest preauth token linked to a user UUID.
+func (r *PostgresRouletteRepository) GetPreauthTokenByUserUUID(ctx context.Context, userUUID string) (*domain.RoulettePreauthToken, error) {
+	if userUUID == "" {
+		return nil, fmt.Errorf("user_uuid is required")
+	}
+
+	query := `
+		SELECT id, token, user_uuid, roulette_config_id, is_used, expires_at, created_at
+		FROM roulette_preauth_token
+		WHERE user_uuid = $1
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+
+	var preauthToken domain.RoulettePreauthToken
+	var userUUIDVal *string
+
+	err := r.pool.QueryRow(ctx, query, userUUID).Scan(
+		&preauthToken.ID,
+		&preauthToken.Token,
+		&userUUIDVal,
+		&preauthToken.RouletteConfigID,
+		&preauthToken.IsUsed,
+		&preauthToken.ExpiresAt,
+		&preauthToken.CreatedAt,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get preauth token by user_uuid: %w", err)
+	}
+
+	preauthToken.UserUUID = userUUIDVal
 	return &preauthToken, nil
 }
 
