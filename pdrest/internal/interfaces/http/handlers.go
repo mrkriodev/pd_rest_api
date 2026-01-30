@@ -369,7 +369,7 @@ func (h *HTTPHandler) GetUserIDByPreauth(c echo.Context) error {
 // GetUserIDBySession returns user UUID (as userId) for a valid session_id + IP
 // Requires X-SESSION-ID header and derives preauth token from session_id + IP
 func (h *HTTPHandler) GetUserIDBySession(c echo.Context) error {
-	if h.rouletteService == nil {
+	if h.userService == nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required"})
 	}
 
@@ -392,15 +392,15 @@ func (h *HTTPHandler) GetUserIDBySession(c echo.Context) error {
 	}
 
 	ctx := context.Background()
-	userID, err := h.rouletteService.GetUserIDBySessionIP(ctx, sessionID, ipAddress)
+	user, err := h.userService.GetUserBySessionAndIP(ctx, sessionID, ipAddress)
 	if err != nil {
-		if strings.Contains(err.Error(), "does not match") || strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "not linked") {
+		if strings.Contains(err.Error(), "not found") {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"userId": userID})
+	return c.JSON(http.StatusOK, map[string]string{"userId": user.UserID})
 }
 
 func (h *HTTPHandler) UserReferralLink(c echo.Context) error {

@@ -128,6 +128,35 @@ func (r *PostgresUserRepository) GetUserBySessionID(ctx context.Context, session
 	return &user, nil
 }
 
+func (r *PostgresUserRepository) GetUserBySessionAndIP(ctx context.Context, sessionID string, ipAddress string) (*domain.User, error) {
+	if sessionID == "" {
+		return nil, fmt.Errorf("session_id is required")
+	}
+	if ipAddress == "" {
+		return nil, fmt.Errorf("ip_address is required")
+	}
+
+	query := `
+		SELECT user_uuid
+		FROM users
+		WHERE session_id = $1 AND ip_address = $2
+	`
+
+	var user domain.User
+
+	err := r.pool.QueryRow(ctx, query, sessionID, ipAddress).Scan(
+		&user.UserID,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get user by session_id and ip: %w", err)
+	}
+
+	return &user, nil
+}
+
 func (r *PostgresUserRepository) CreateOrUpdateUserBySession(sessionID string, ipAddress string) error {
 	ctx := context.Background()
 

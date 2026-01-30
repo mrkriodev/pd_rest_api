@@ -11,6 +11,7 @@ type UserRepository interface {
 	GetUserByGoogleID(googleID string) (*domain.User, error)
 	GetUserByTelegramID(telegramID int64) (*domain.User, error)
 	GetUserBySessionID(ctx context.Context, sessionID string) (*domain.User, error)
+	GetUserBySessionAndIP(ctx context.Context, sessionID string, ipAddress string) (*domain.User, error)
 	CreateOrUpdateUserBySession(sessionID string, ipAddress string) error
 	CreateOrUpdateUserWithGoogleInfo(ctx context.Context, userUUID string, googleID string, googleEmail string, googleName string) error
 }
@@ -50,6 +51,11 @@ func (r *InMemoryUserRepository) GetUserByTelegramID(telegramID int64) (*domain.
 
 func (r *InMemoryUserRepository) GetUserBySessionID(ctx context.Context, sessionID string) (*domain.User, error) {
 	// In-memory repository doesn't support user lookup by session
+	return nil, nil
+}
+
+func (r *InMemoryUserRepository) GetUserBySessionAndIP(ctx context.Context, sessionID string, ipAddress string) (*domain.User, error) {
+	// In-memory repository doesn't support user lookup by session + IP
 	return nil, nil
 }
 

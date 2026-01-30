@@ -59,6 +59,17 @@ func (s *UserService) GetUserByTelegramID(telegramID int64) (*domain.User, error
 	return result, nil
 }
 
+func (s *UserService) GetUserBySessionAndIP(ctx context.Context, sessionID string, ipAddress string) (*domain.User, error) {
+	result, err := s.repo.GetUserBySessionAndIP(ctx, sessionID, ipAddress)
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return nil, errors.New("user not found")
+	}
+	return result, nil
+}
+
 // RegisterUserWithGoogle registers or updates a user with Google OAuth information
 func (s *UserService) RegisterUserWithGoogle(ctx context.Context, userUUID string, googleID string, googleEmail string, googleName string) error {
 	if userUUID == "" {

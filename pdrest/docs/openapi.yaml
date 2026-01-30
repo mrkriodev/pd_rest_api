@@ -805,7 +805,7 @@ paths:
       summary: Get user ID by session_id and IP
       description: |
         Returns user UUID (as userId) for a valid session_id + IP address.
-        The preauth token is derived from session_id + IP.
+        Looks up user directly by session_id + IP in users table.
       tags:
         - Authentication
       parameters:
