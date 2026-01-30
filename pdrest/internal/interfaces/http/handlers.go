@@ -52,6 +52,7 @@ func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingServi
 	api.GET("/available_achievements", h.AvailableAchievements)
 	api.GET("/globalrating", h.GlobalRating)
 	api.GET("/getidbypreauth", h.GetUserIDByPreauth)
+	api.GET("/getidbysession", h.GetUserIDBySession)
 
 	// Documentation endpoints
 	api.GET("/docs", h.GetAPIDocumentation)
@@ -116,6 +117,7 @@ Available endpoints:
 - POST /api/user/openbet - Create a new bet
 - GET /api/user/betstatus?id=<bet_id> - Get bet status
 - GET /api/user/unfinished_bets/:uuid - Get unfinished bets for user
+- GET /api/getidbysession - Get user ID by session_id + IP
 
 For full documentation, see: /api/docs/openapi.yaml or /api/docs/openapi.json
 `
@@ -354,6 +356,43 @@ func (h *HTTPHandler) GetUserIDByPreauth(c echo.Context) error {
 
 	ctx := context.Background()
 	userID, err := h.rouletteService.GetUserIDByPreauthToken(ctx, preauthToken, sessionID, ipAddress)
+	if err != nil {
+		if strings.Contains(err.Error(), "does not match") || strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "not linked") {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"userId": userID})
+}
+
+// GetUserIDBySession returns user UUID (as userId) for a valid session_id + IP
+// Requires X-SESSION-ID header and derives preauth token from session_id + IP
+func (h *HTTPHandler) GetUserIDBySession(c echo.Context) error {
+	if h.rouletteService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required"})
+	}
+
+	// Get X-SESSION-ID header (mandatory)
+	sessionID := c.Request().Header.Get("X-SESSION-ID")
+	if sessionID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "X-SESSION-ID header is required"})
+	}
+
+	// Get client IP
+	ipAddress := c.Request().Header.Get("X-Forwarded-For")
+	if ipAddress == "" {
+		ipAddress = c.Request().Header.Get("X-Real-IP")
+	}
+	if ipAddress == "" {
+		ipAddress = c.RealIP()
+	}
+	if ipAddress == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "could not determine IP address"})
+	}
+
+	ctx := context.Background()
+	userID, err := h.rouletteService.GetUserIDBySessionIP(ctx, sessionID, ipAddress)
 	if err != nil {
 		if strings.Contains(err.Error(), "does not match") || strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "not linked") {
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
