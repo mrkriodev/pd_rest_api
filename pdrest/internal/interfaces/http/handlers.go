@@ -737,8 +737,7 @@ func (h *HTTPHandler) RegisterGoogleUser(c echo.Context) error {
 
 	// Parse request body
 	var req struct {
-		UserID       string `json:"userID"`
-		PreauthToken string `json:"preauth_token"`
+		UserID string `json:"userID"`
 	}
 
 	if err := c.Bind(&req); err != nil {
@@ -747,10 +746,6 @@ func (h *HTTPHandler) RegisterGoogleUser(c echo.Context) error {
 
 	if req.UserID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "userID is required"})
-	}
-
-	if req.PreauthToken == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "preauth_token is required"})
 	}
 
 	// Check if Google ID is already registered to a different user
@@ -772,13 +767,6 @@ func (h *HTTPHandler) RegisterGoogleUser(c echo.Context) error {
 	ctx := context.Background()
 	if err := h.userService.RegisterUserWithGoogle(ctx, req.UserID, googleUserInfo.ID, googleUserInfo.Email, googleUserInfo.Name); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
-	}
-
-	// Link preauth token to user
-	if h.rouletteService != nil {
-		if err := h.rouletteService.LinkPreauthTokenToUser(ctx, req.PreauthToken, req.UserID); err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "failed to link preauth token: " + err.Error()})
-		}
 	}
 
 	// Generate JWT token pair for the user

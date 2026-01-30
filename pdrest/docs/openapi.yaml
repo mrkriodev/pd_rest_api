@@ -168,8 +168,7 @@ paths:
       summary: Register a new user with Google OAuth
       description: |
         Registers a new user with Google OAuth information. This endpoint is called when a user first authenticates with Google.
-        Requires a valid Google ID token in the Authorization header, and userID (UUID) and preauth_token in the request body.
-        The preauth_token will be linked to the user after successful registration.
+        Requires a valid Google ID token in the Authorization header and userID (UUID) in the request body.
       tags:
         - Authentication
       security:
@@ -182,14 +181,10 @@ paths:
               type: object
               required:
                 - userID
-                - preauth_token
               properties:
                 userID:
                   type: string
                   description: User UUID (must already exist in the system, typically created via session/IP)
-                preauth_token:
-                  type: string
-                  description: Preauth token to link to the user after successful registration
       responses:
         '200':
           description: JWT token pair
