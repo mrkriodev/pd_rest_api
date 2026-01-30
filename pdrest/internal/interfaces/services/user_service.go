@@ -81,6 +81,10 @@ func (s *UserService) GetUserBySessionAndIP(ctx context.Context, sessionID strin
 	return result, nil
 }
 
+func (s *UserService) CreateOrUpdateUserBySession(sessionID string, ipAddress string) error {
+	return s.repo.CreateOrUpdateUserBySession(sessionID, ipAddress)
+}
+
 // RegisterUserWithGoogle registers or updates a user with Google OAuth information
 func (s *UserService) RegisterUserWithGoogle(ctx context.Context, userUUID string, googleID string, googleEmail string, googleName string) error {
 	if userUUID == "" {

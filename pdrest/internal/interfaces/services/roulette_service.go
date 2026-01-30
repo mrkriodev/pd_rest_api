@@ -655,24 +655,7 @@ func (s *RouletteService) GetExistingPreauthToken(ctx context.Context, sessionID
 		return "", errors.New("X-SESSION-ID is required")
 	}
 
-	// If IP is missing, try to find token by linked user UUID (session_id only)
-	if ipAddress == "" && s.userRepo != nil {
-		user, err := s.userRepo.GetUserBySessionID(ctx, sessionID)
-		if err != nil {
-			return "", fmt.Errorf("failed to get user by session_id: %w", err)
-		}
-		if user != nil {
-			existingToken, err := s.repo.GetPreauthTokenByUserUUID(ctx, user.UserID)
-			if err != nil {
-				return "", fmt.Errorf("failed to get preauth token by user_uuid: %w", err)
-			}
-			if existingToken != nil {
-				return existingToken.Token, nil
-			}
-		}
-	}
-
-	// If IP is available (or fallback failed), use session_id + IP derived token
+	// Use session_id + IP derived token (IP can be empty)
 	token := generateTokenFromSessionAndIP(sessionID, ipAddress)
 	existingToken, err := s.repo.GetPreauthToken(ctx, token)
 	if err != nil {
