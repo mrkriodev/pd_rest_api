@@ -800,6 +800,49 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /getidbysession:
+    get:
+      summary: Get user ID by session_id and IP
+      description: |
+        Returns user UUID (as userId) for a valid session_id + IP address.
+        The preauth token is derived from session_id + IP.
+      tags:
+        - Authentication
+      parameters:
+        - name: X-SESSION-ID
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Session ID
+        - name: X-Forwarded-For
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Client IP (optional, otherwise X-Real-IP or socket IP is used)
+        - name: X-Real-IP
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Client IP (optional)
+      responses:
+        '200':
+          description: User ID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userId:
+                    type: string
+                    description: User UUID linked to the derived preauth token
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   securitySchemes:
     BearerAuth:

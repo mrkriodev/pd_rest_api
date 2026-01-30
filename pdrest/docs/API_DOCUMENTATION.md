@@ -278,6 +278,20 @@ Get bet status with current price if timeframe has passed.
 }
 ```
 
+#### GET /api/getidbysession
+Get user UUID by session_id + IP (derived preauth token).
+
+**Headers:**
+- `X-SESSION-ID` (required)
+- `X-Forwarded-For` or `X-Real-IP` (optional)
+
+**Response:**
+```json
+{
+  "userId": "user-uuid"
+}
+```
+
 #### GET /api/user/unfinished_bets/:uuid
 Get unfinished bets (closePrice is null) for a user.
 
