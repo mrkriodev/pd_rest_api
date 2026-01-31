@@ -103,6 +103,26 @@ func (s *RouletteService) GetRouletteStatus(ctx context.Context, preauthToken st
 	return response, nil
 }
 
+// GetStartupRouletteStatus returns status for startup roulette when no preauth token exists yet.
+func (s *RouletteService) GetStartupRouletteStatus(ctx context.Context) (*domain.GetRouletteStatusResponse, error) {
+	config, err := s.repo.GetRouletteConfigByType(ctx, domain.RouletteTypeOnStart, "startup")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get roulette config: %w", err)
+	}
+	if config == nil || !config.IsActive {
+		return &domain.GetRouletteStatusResponse{
+			CanSpin: false,
+		}, nil
+	}
+
+	return &domain.GetRouletteStatusResponse{
+		Config:         config,
+		RemainingSpins: config.MaxSpins,
+		CanSpin:        true,
+		PrizeTaken:     false,
+	}, nil
+}
+
 // GetRouletteStatusByUser gets the current status of roulette by user UUID and roulette config ID
 func (s *RouletteService) GetRouletteStatusByUser(ctx context.Context, userUUID string, rouletteConfigID int) (*domain.GetRouletteStatusResponse, error) {
 	// Get config

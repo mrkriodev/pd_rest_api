@@ -924,6 +924,22 @@ func (h *HTTPHandler) GetRouletteStatus(c echo.Context) error {
 
 	// Authentication based on roulette_id
 	if rouletteID == 1 {
+		// If Authorization header is present, prefer authenticated user status
+		if authHeader := c.Request().Header.Get("Authorization"); strings.TrimSpace(authHeader) != "" {
+			userID, err := h.validateJWTToken(c)
+			if err != nil {
+				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authorization required for this roulette: " + err.Error()})
+			}
+
+			ctx := context.Background()
+			status, err := h.rouletteService.GetRouletteStatusByUser(ctx, userID, rouletteID)
+			if err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+
+			return c.JSON(http.StatusOK, status)
+		}
+
 		// For roulette_id = 1, check X-SESSION-ID header
 		sessionID := c.Request().Header.Get("X-SESSION-ID")
 		if sessionID == "" {
@@ -950,11 +966,12 @@ func (h *HTTPHandler) GetRouletteStatus(c echo.Context) error {
 		preauthToken, err = h.rouletteService.GetExistingPreauthToken(ctx, sessionID, ipAddress)
 		if err != nil {
 			if strings.Contains(err.Error(), "not found") {
-				// Create preauth token for first startup roulette
-				preauthToken, err = h.rouletteService.GetPreauthToken(ctx, sessionID, ipAddress)
-				if err != nil {
-					return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				// No preauth yet: return startup roulette status without creating token
+				status, statusErr := h.rouletteService.GetStartupRouletteStatus(ctx)
+				if statusErr != nil {
+					return c.JSON(http.StatusInternalServerError, map[string]string{"error": statusErr.Error()})
 				}
+				return c.JSON(http.StatusOK, status)
 			} else {
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			}
