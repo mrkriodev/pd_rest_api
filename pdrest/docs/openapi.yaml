@@ -153,11 +153,26 @@ paths:
         - GoogleAuth: []
       responses:
         '200':
-          description: JWT token pair
+          description: User ID and JWT token pair
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TokenPair'
+                type: object
+                properties:
+                  userID:
+                    type: string
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  expires_in:
+                    type: integer
+                    format: int64
+                required:
+                  - userID
+                  - access_token
+                  - refresh_token
+                  - expires_in
         '401':
           $ref: '#/components/responses/Unauthorized'
         '503':

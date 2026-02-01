@@ -183,7 +183,7 @@ func (r *PostgresUserRepository) CreateOrUpdateUserBySession(sessionID string, i
 }
 
 // CreateOrUpdateUserWithGoogleInfo creates or updates a user with Google OAuth information
-func (r *PostgresUserRepository) CreateOrUpdateUserWithGoogleInfo(ctx context.Context, userUUID string, googleID string, googleEmail string, googleName string) error {
+func (r *PostgresUserRepository) CreateOrUpdateUserWithGoogleInfo(ctx context.Context, userUUID string, googleID string) error {
 	if userUUID == "" {
 		return fmt.Errorf("user_uuid is required")
 	}
@@ -194,19 +194,17 @@ func (r *PostgresUserRepository) CreateOrUpdateUserWithGoogleInfo(ctx context.Co
 	// Use INSERT ... ON CONFLICT to handle both create and update cases
 	// If user exists (by user_uuid), update Google info; if not, create new user with Google info
 	insertQuery := `
-		INSERT INTO users (user_uuid, google_id, google_email, google_name, authorized_fully, auth_provider, last_login_at, updated_at)
-		VALUES ($1, $2, $3, $4, TRUE, 'google', EXTRACT(EPOCH FROM NOW())::BIGINT * 1000, EXTRACT(EPOCH FROM NOW())::BIGINT * 1000)
+		INSERT INTO users (user_uuid, google_id, authorized_fully, auth_provider, last_login_at, updated_at)
+		VALUES ($1, $2, TRUE, 'google', EXTRACT(EPOCH FROM NOW())::BIGINT * 1000, EXTRACT(EPOCH FROM NOW())::BIGINT * 1000)
 		ON CONFLICT (user_uuid) DO UPDATE 
 		SET google_id = EXCLUDED.google_id,
-		    google_email = EXCLUDED.google_email,
-		    google_name = EXCLUDED.google_name,
 		    authorized_fully = TRUE,
 		    auth_provider = 'google',
 		    last_login_at = EXTRACT(EPOCH FROM NOW())::BIGINT * 1000,
 		    updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT * 1000
 	`
 
-	_, err := r.pool.Exec(ctx, insertQuery, userUUID, googleID, googleEmail, googleName)
+	_, err := r.pool.Exec(ctx, insertQuery, userUUID, googleID)
 	if err != nil {
 		return fmt.Errorf("failed to create or update user with Google info: %w", err)
 	}

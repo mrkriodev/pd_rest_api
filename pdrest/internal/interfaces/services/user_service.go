@@ -86,12 +86,12 @@ func (s *UserService) CreateOrUpdateUserBySession(sessionID string, ipAddress st
 }
 
 // RegisterUserWithGoogle registers or updates a user with Google OAuth information
-func (s *UserService) RegisterUserWithGoogle(ctx context.Context, userUUID string, googleID string, googleEmail string, googleName string) error {
+func (s *UserService) RegisterUserWithGoogle(ctx context.Context, userUUID string, googleID string) error {
 	if userUUID == "" {
 		return errors.New("user_uuid is required")
 	}
 	if googleID == "" {
 		return errors.New("google_id is required")
 	}
-	return s.repo.CreateOrUpdateUserWithGoogleInfo(ctx, userUUID, googleID, googleEmail, googleName)
+	return s.repo.CreateOrUpdateUserWithGoogleInfo(ctx, userUUID, googleID)
 }

@@ -764,10 +764,9 @@ func (h *HTTPHandler) RegisterGoogleUser(c echo.Context) error {
 		// Database error (not "user not found") - return error
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to check existing user: " + err.Error()})
 	}
-	// If user not found (err != nil with "not found" message) or err == nil with existingUser == nil, proceed with registration
 
 	// Register user with Google info
-	if err := h.userService.RegisterUserWithGoogle(ctx, sessionUser.UserID, googleUserInfo.ID, googleUserInfo.Email, googleUserInfo.Name); err != nil {
+	if err := h.userService.RegisterUserWithGoogle(ctx, sessionUser.UserID, googleUserInfo.ID); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
@@ -777,7 +776,12 @@ func (h *HTTPHandler) RegisterGoogleUser(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate token"})
 	}
 
-	return c.JSON(http.StatusOK, tokenPair)
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"userID":        sessionUser.UserID,
+		"access_token":  tokenPair.AccessToken,
+		"refresh_token": tokenPair.RefreshToken,
+		"expires_in":    tokenPair.ExpiresIn,
+	})
 }
 
 func (h *HTTPHandler) VerifyTelegramToken(c echo.Context) error {
