@@ -1021,6 +1021,21 @@ func (h *HTTPHandler) GetRouletteStatus(c echo.Context) error {
 		}
 		ctx := context.Background()
 
+		// If user exists for this session+IP, return status by user UUID
+		if h.userService != nil && sessionID != "" && ipAddress != "" {
+			user, err := h.userService.GetUserBySessionAndIP(ctx, sessionID, ipAddress)
+			if err == nil && user != nil {
+				status, err := h.rouletteService.GetRouletteStatusByUser(ctx, user.UserID, rouletteID)
+				if err != nil {
+					return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				}
+				return c.JSON(http.StatusOK, status)
+			}
+			if err != nil && !strings.Contains(err.Error(), "not found") {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+		}
+
 		// Get existing preauth token from session_id + IP (do not create a new one)
 		preauthToken, err = h.rouletteService.GetExistingPreauthToken(ctx, sessionID, ipAddress)
 		if err != nil {
