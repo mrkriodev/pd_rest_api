@@ -67,8 +67,8 @@ go build -o build/server.exe ./cmd/server
 - `SERVER_PORT` - Server port (default: 8080)
 - `SEED_DATA` - Set to "true" to seed initial data (optional)
 - `JWT_SECRET_KEY` - Secret key for JWT token signing (default: "your-secret-key-change-in-production")
-- `JWT_ACCESS_TOKEN_TTL_HOURS` - Access token TTL in hours (default: 1)
-- `JWT_REFRESH_TOKEN_TTL_HOURS` - Refresh token TTL in hours (default: 24)
+- `JWT_ACCESS_TOKEN_TTL_HOURS` - Access token TTL in hours (default: 72)
+- `JWT_REFRESH_TOKEN_TTL_HOURS` - Refresh token TTL in hours (default: 72)
 - `JWT_STRICT_MODE` - If false, only checks that token is non-empty (default: true)
 - `TELEGRAM_BOT_TOKEN` - Telegram bot token for hash verification (optional, if not set hash verification is disabled)
 

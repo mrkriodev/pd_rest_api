@@ -62,7 +62,7 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
-  /c:
+  /globalrating:
     get:
       summary: Get global rating (top users by points)
       tags:
@@ -83,8 +83,9 @@ paths:
     post:
       summary: Refresh JWT token
       description: |
-        When JWT_STRICT_MODE=true: Validates JWT token from Authorization header and returns new token pair.
-        When JWT_STRICT_MODE=false: Accepts userID in body to generate new tokens, or refresh_token to refresh existing tokens.
+        When JWT_STRICT_MODE=true: Requires Authorization header with a JWT (can be expired) that contains the same userID
+        as in the request body. Returns a new token pair.
+        When JWT_STRICT_MODE=false: Requires a valid userID in the request body and returns a new token pair.
       tags:
         - Authentication
       security:
@@ -103,12 +104,9 @@ paths:
             schema:
               type: object
               properties:
-                refresh_token:
-                  type: string
-                  description: Refresh token (required when JWT_STRICT_MODE=false and userID not provided)
                 userID:
                   type: string
-                  description: User ID to generate tokens for (only works when JWT_STRICT_MODE=false)
+                  description: User ID to generate tokens for
       responses:
         '200':
           description: Token pair
@@ -120,17 +118,49 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Token does not match userID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /auth/status:
     get:
       summary: Check JWT authorization status
+      description: |
+        Accepts a pinned JWT in the Authorization header. The signature is validated,
+        and if the user exists, returns a status based on token liveness and presence
+        of userID in the request body.
       tags:
         - Authentication
       security:
         - BearerAuth: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Bearer token (can be expired but must be validly signed)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userID:
+                  type: string
+                  description: User ID to validate token liveness against
       responses:
         '200':
-          description: User ID
+          description: User ID (token live and matches request body)
           content:
             application/json:
               schema:
@@ -139,7 +169,30 @@ paths:
                   userID:
                     type: string
         '401':
-          $ref: '#/components/responses/Unauthorized'
+          description: Unauthorized (invalid token, expired token, or no userID provided)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      userID:
+                        type: string
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+        '403':
+          description: Token does not match userID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /auth/google/verify:
     get:
@@ -153,26 +206,11 @@ paths:
         - GoogleAuth: []
       responses:
         '200':
-          description: User ID and JWT token pair
+          description: JWT token pair
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  userID:
-                    type: string
-                  access_token:
-                    type: string
-                  refresh_token:
-                    type: string
-                  expires_in:
-                    type: integer
-                    format: int64
-                required:
-                  - userID
-                  - access_token
-                  - refresh_token
-                  - expires_in
+                $ref: '#/components/schemas/TokenPair'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '503':
@@ -207,15 +245,32 @@ paths:
                   description: Deprecated. Use X-SESSION-ID header instead.
       responses:
         '200':
-          description: JWT token pair
+          description: User ID and JWT token pair
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TokenPair'
+                type: object
+                properties:
+                  userID:
+                    type: string
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  expires_in:
+                    type: integer
+                    format: int64
+                required:
+                  - userID
+                  - access_token
+                  - refresh_token
+                  - expires_in
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '409':
           description: Conflict - Google account already registered to another user
           content:
@@ -549,7 +604,8 @@ paths:
       summary: Get roulette status
       description: |
         Gets the current status of roulette including spins_left and other info about the current state.
-        If roulette_id = 1: Requires X-SESSION-ID header (no JWT required). Returns roulette status for pre-user entity identified by X-SESSION-ID.
+        If roulette_id = 1: Authorization header is optional. If present, returns status for the authenticated user.
+        Otherwise uses X-SESSION-ID (header or cookie) to return status for the pre-user entity.
         If roulette_id != 1: Requires JWT Authorization header only. Returns roulette status for authenticated user.
       tags:
         - Roulette
@@ -573,7 +629,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Bearer token (required when roulette_id != 1)
+          description: Bearer token (required when roulette_id != 1, optional when roulette_id = 1)
       responses:
         '200':
           description: Roulette status with spins_left and current state

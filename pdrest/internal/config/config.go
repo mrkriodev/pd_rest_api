@@ -114,8 +114,8 @@ func Load() *Config {
 		},
 		JWT: JWTConfig{
 			SecretKey:       getEnv("JWT_SECRET_KEY", "your-secret-key-change-in-production"),
-			AccessTokenTTL:  getEnvAsInt("JWT_ACCESS_TOKEN_TTL_HOURS", 1),
-			RefreshTokenTTL: getEnvAsInt("JWT_REFRESH_TOKEN_TTL_HOURS", 24),
+			AccessTokenTTL:  getEnvAsInt("JWT_ACCESS_TOKEN_TTL_HOURS", 72),
+			RefreshTokenTTL: getEnvAsInt("JWT_REFRESH_TOKEN_TTL_HOURS", 72),
 			StrictMode:      getEnvAsBool("JWT_STRICT_MODE", true),
 		},
 		Telegram: TelegramConfig{
