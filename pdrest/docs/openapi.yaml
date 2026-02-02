@@ -825,52 +825,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /getidbypreauth:
-    get:
-      summary: Get user ID by preauth token
-      description: |
-        Returns user UUID (as userId) for a valid preauth token.
-        Requires X-SESSION-ID header that must correspond to the preauth token.
-        The preauth token is validated against session_id + IP address.
-      tags:
-        - Authentication
-      parameters:
-        - name: preauth_token
-          in: query
-          required: true
-          schema:
-            type: string
-          description: Preauth token (can also be provided via X-Preauth-Token header)
-        - name: X-Preauth-Token
-          in: header
-          required: false
-          schema:
-            type: string
-          description: Preauth token (alternative to query parameter)
-        - name: X-SESSION-ID
-          in: header
-          required: true
-          schema:
-            type: string
-          description: Session ID (must correspond to the preauth token)
-      responses:
-        '200':
-          description: User ID
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  userId:
-                    type: string
-                    description: User UUID linked to the preauth token
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /getidbysession:
     get:
       summary: Get user ID by session_id and IP

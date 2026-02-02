@@ -53,7 +53,6 @@ func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingServi
 	api.GET("/available_events", h.AvailableEvents)
 	api.GET("/available_achievements", h.AvailableAchievements)
 	api.GET("/globalrating", h.GlobalRating)
-	api.GET("/getidbypreauth", h.GetUserIDByPreauth)
 	api.GET("/getidbysession", h.GetUserIDBySession)
 
 	// Documentation endpoints
@@ -320,52 +319,6 @@ func (h *HTTPHandler) UserAssets(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, response)
-}
-
-// GetUserIDByPreauth returns user UUID (as userId) for a valid preauth token
-// Requires X-SESSION-ID header that must correspond to the preauth token
-func (h *HTTPHandler) GetUserIDByPreauth(c echo.Context) error {
-	if h.rouletteService == nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required"})
-	}
-
-	// Get preauth_token from header or query parameter
-	preauthToken := c.Request().Header.Get("X-Preauth-Token")
-	if preauthToken == "" {
-		preauthToken = c.QueryParam("preauth_token")
-	}
-	if preauthToken == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "preauth_token is required (header X-Preauth-Token or query parameter)"})
-	}
-
-	// Get X-SESSION-ID header (mandatory)
-	sessionID := c.Request().Header.Get("X-SESSION-ID")
-	if sessionID == "" {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "X-SESSION-ID header is required"})
-	}
-
-	// Get client IP
-	ipAddress := c.Request().Header.Get("X-Forwarded-For")
-	if ipAddress == "" {
-		ipAddress = c.Request().Header.Get("X-Real-IP")
-	}
-	if ipAddress == "" {
-		ipAddress = c.RealIP()
-	}
-	if ipAddress == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "could not determine IP address"})
-	}
-
-	ctx := context.Background()
-	userID, err := h.rouletteService.GetUserIDByPreauthToken(ctx, preauthToken, sessionID, ipAddress)
-	if err != nil {
-		if strings.Contains(err.Error(), "does not match") || strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "not linked") {
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
-		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
-	}
-
-	return c.JSON(http.StatusOK, map[string]string{"userId": userID})
 }
 
 // GetUserIDBySession returns user UUID (as userId) for a valid session_id + IP
