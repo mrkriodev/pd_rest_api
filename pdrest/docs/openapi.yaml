@@ -222,6 +222,7 @@ paths:
       description: |
         Registers a new user with Google OAuth information. This endpoint is called when a user first authenticates with Google.
         Requires a valid Google ID token in the Authorization header and X-SESSION-ID header.
+        If no user exists for the session_id, a user is created using session_id + IP (defaults to 127.0.0.1 if IP is not available).
       tags:
         - Authentication
       security:

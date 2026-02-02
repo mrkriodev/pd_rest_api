@@ -774,14 +774,36 @@ func (h *HTTPHandler) RegisterGoogleUser(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "X-SESSION-ID header is required"})
 	}
 
+	// Get client IP (needed if we have to create user by session)
+	ipAddress := c.Request().Header.Get("X-Forwarded-For")
+	if ipAddress == "" {
+		ipAddress = c.Request().Header.Get("X-Real-IP")
+	}
+	if ipAddress == "" {
+		ipAddress = c.RealIP()
+	}
+	if ipAddress == "" {
+		ipAddress = "127.0.0.1"
+	}
+
 	// Find user by session_id
 	ctx := context.Background()
 	sessionUser, err := h.userService.GetUserBySessionID(ctx, sessionID)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "user not found for session_id"})
+			if err := h.userService.CreateOrUpdateUserBySession(sessionID, ipAddress); err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+			sessionUser, err = h.userService.GetUserBySessionID(ctx, sessionID)
+			if err != nil {
+				if strings.Contains(err.Error(), "not found") {
+					return c.JSON(http.StatusNotFound, map[string]string{"error": "user not found for session_id"})
+				}
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+		} else {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	// Check if Google ID is already registered to a different user
