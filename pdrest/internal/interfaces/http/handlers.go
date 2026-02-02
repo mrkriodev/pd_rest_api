@@ -64,7 +64,7 @@ func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingServi
 	// Auth endpoints
 	auth := api.Group("/auth")
 	auth.POST("/refresh", h.RefreshToken)
-	auth.GET("/status", h.AuthStatus)
+	auth.POST("/status", h.AuthStatus)
 	googleAuth := auth.Group("/google")
 	googleAuth.GET("/verify", h.VerifyGoogleToken)
 	googleAuth.POST("/register", h.RegisterGoogleUser)

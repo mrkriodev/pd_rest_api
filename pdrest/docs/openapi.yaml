@@ -131,7 +131,7 @@ paths:
           $ref: '#/components/responses/NotFound'
 
   /auth/status:
-    get:
+    post:
       summary: Check JWT authorization status
       description: |
         Accepts a pinned JWT in the Authorization header. The signature is validated,
