@@ -244,3 +244,31 @@ func (r *PostgresUserRepository) CreateOrUpdateUserWithTelegramInfo(ctx context.
 
 	return nil
 }
+
+// CreateOrUpdateUserWithTelegramInfoByTelegramID creates or updates a user with Telegram OAuth information by telegram_id
+func (r *PostgresUserRepository) CreateOrUpdateUserWithTelegramInfoByTelegramID(ctx context.Context, telegramID int64, telegramUsername string, telegramFirstName string, telegramLastName string) (string, error) {
+	if telegramID == 0 {
+		return "", fmt.Errorf("telegram_id is required")
+	}
+
+	insertQuery := `
+		INSERT INTO users (telegram_id, telegram_username, telegram_first_name, telegram_last_name, authorized_fully, auth_provider, last_login_at, updated_at)
+		VALUES ($1, $2, $3, $4, TRUE, 'telegram', EXTRACT(EPOCH FROM NOW())::BIGINT * 1000, EXTRACT(EPOCH FROM NOW())::BIGINT * 1000)
+		ON CONFLICT (telegram_id) DO UPDATE 
+		SET telegram_username = EXCLUDED.telegram_username,
+		    telegram_first_name = EXCLUDED.telegram_first_name,
+		    telegram_last_name = EXCLUDED.telegram_last_name,
+		    authorized_fully = TRUE,
+		    auth_provider = 'telegram',
+		    last_login_at = EXTRACT(EPOCH FROM NOW())::BIGINT * 1000,
+		    updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT * 1000
+		RETURNING user_uuid
+	`
+
+	var userUUID string
+	if err := r.pool.QueryRow(ctx, insertQuery, telegramID, telegramUsername, telegramFirstName, telegramLastName).Scan(&userUUID); err != nil {
+		return "", fmt.Errorf("failed to create or update user with Telegram info: %w", err)
+	}
+
+	return userUUID, nil
+}

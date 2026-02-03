@@ -69,7 +69,8 @@ func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingServi
 	googleAuth.GET("/verify", h.VerifyGoogleToken)
 	googleAuth.POST("/register", h.RegisterGoogleUser)
 	telegramAuth := auth.Group("/telegram")
-	telegramAuth.GET("/verify", h.VerifyTelegramToken)
+	telegramAuth.POST("/login", h.TelegramLogin)
+	telegramAuth.POST("/webapp", h.TelegramWebAppLogin)
 
 	// User endpoints (protected by JWT)
 	user := api.Group("/user")
@@ -110,9 +111,10 @@ Available endpoints:
 - GET /api/status - Health check
 - GET /api/available_events - Get available events
 - POST /api/auth/refresh - Refresh JWT token
-- GET /api/auth/status - Check JWT authorization status
+- POST /api/auth/status - Check JWT authorization status
 - GET /api/auth/google/verify - Verify Google OAuth token
-- GET /api/auth/telegram/verify - Verify Telegram Web Login
+- POST /api/auth/telegram/login - Telegram login (registers user)
+- POST /api/auth/telegram/webapp - Telegram WebApp login (registers user)
 - GET /api/user/last_login/:uuid - Get user last login time
 - GET /api/user/profile/:uuid - Get user profile
 - POST /api/user/openbet - Create a new bet
@@ -839,7 +841,7 @@ func (h *HTTPHandler) RegisterGoogleUser(c echo.Context) error {
 	})
 }
 
-func (h *HTTPHandler) VerifyTelegramToken(c echo.Context) error {
+func (h *HTTPHandler) TelegramLogin(c echo.Context) error {
 	if h.telegramAuthService == nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "Telegram authentication service unavailable"})
 	}
@@ -959,6 +961,49 @@ func (h *HTTPHandler) VerifyTelegramToken(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"userID":        sessionUser.UserID,
+		"access_token":  tokenPair.AccessToken,
+		"refresh_token": tokenPair.RefreshToken,
+		"expires_in":    tokenPair.ExpiresIn,
+	})
+}
+
+// TelegramWebAppLogin validates tgInitData from Telegram WebApp and registers/updates user
+func (h *HTTPHandler) TelegramWebAppLogin(c echo.Context) error {
+	if h.telegramAuthService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "Telegram authentication service unavailable"})
+	}
+	if h.userService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "User service unavailable"})
+	}
+
+	var req struct {
+		TgInitData string `json:"tgInitData"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+	if strings.TrimSpace(req.TgInitData) == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "tgInitData is required"})
+	}
+
+	telegramUserInfo, err := h.telegramAuthService.ValidateWebAppInitData(req.TgInitData)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
+
+	ctx := context.Background()
+	userID, err := h.userService.RegisterUserWithTelegramByTelegramID(ctx, telegramUserInfo.ID, telegramUserInfo.Username, telegramUserInfo.FirstName, telegramUserInfo.LastName)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	tokenPair, err := h.authService.GenerateTokenPair(userID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate token"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"userID":        userID,
 		"access_token":  tokenPair.AccessToken,
 		"refresh_token": tokenPair.RefreshToken,
 		"expires_in":    tokenPair.ExpiresIn,

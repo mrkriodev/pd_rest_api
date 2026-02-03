@@ -116,8 +116,8 @@ Verify Google OAuth token and return JWT token pair.
 }
 ```
 
-#### GET /api/auth/telegram/verify
-Verify Telegram Web Login data and return JWT token pair.
+#### POST /api/auth/telegram/login
+Telegram login (registers user) and returns JWT token pair.
 
 **Query Parameters (or JSON body):**
 - `id` - Telegram user ID
@@ -131,6 +131,33 @@ Verify Telegram Web Login data and return JWT token pair.
 **Response:**
 ```json
 {
+  "access_token": "jwt_access_token",
+  "refresh_token": "jwt_refresh_token",
+  "expires_in": 3600
+}
+```
+
+**Error Response (401):**
+```json
+{
+  "error": "invalid hash"
+}
+```
+
+#### POST /api/auth/telegram/webapp
+Telegram WebApp login (registers user) and returns JWT token pair.
+
+**Request Body:**
+```json
+{
+  "tgInitData": "<window.Telegram.WebApp.tgInitData>"
+}
+```
+
+**Response:**
+```json
+{
+  "userID": "user-uuid",
   "access_token": "jwt_access_token",
   "refresh_token": "jwt_refresh_token",
   "expires_in": 3600
@@ -441,7 +468,8 @@ All endpoints may return the following error responses:
 
 1. **Get JWT Token:**
    - Use `/api/auth/google/verify` with Google token, OR
-   - Use `/api/auth/telegram/verify` with Telegram auth data
+   - Use `/api/auth/telegram/login` with Telegram auth data, OR
+   - Use `/api/auth/telegram/webapp` with Telegram WebApp tgInitData
 
 2. **Use JWT Token:**
    - Include token in `Authorization: Bearer <token>` header for protected endpoints

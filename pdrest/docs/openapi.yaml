@@ -286,11 +286,11 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
-  /auth/telegram/verify:
-    get:
-      summary: Verify Telegram Web Login
+  /auth/telegram/login:
+    post:
+      summary: Telegram login (registers user)
       description: |
-        Verifies Telegram Web Login data and links it to a user identified by X-SESSION-ID.
+        Verifies Telegram Web Login data and registers/updates a user identified by X-SESSION-ID.
         If no user exists for the session_id, a user is created using session_id + IP (defaults to 127.0.0.1 if IP is not available).
       tags:
         - Authentication
@@ -367,6 +367,56 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /auth/telegram/webapp:
+    post:
+      summary: Telegram WebApp login (registers user)
+      description: |
+        Validates window.Telegram.WebApp.tgInitData and registers/updates user by telegram_id.
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tgInitData:
+                  type: string
+                  description: Telegram WebApp init data
+              required:
+                - tgInitData
+      responses:
+        '200':
+          description: User ID and JWT token pair
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userID:
+                    type: string
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  expires_in:
+                    type: integer
+                    format: int64
+                required:
+                  - userID
+                  - access_token
+                  - refresh_token
+                  - expires_in
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /user/last_login/{uuid}:
     get:

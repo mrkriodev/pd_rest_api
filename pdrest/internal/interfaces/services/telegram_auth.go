@@ -4,8 +4,10 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -43,6 +45,13 @@ type TelegramUserInfo struct {
 	Username  string
 }
 
+type telegramWebAppUser struct {
+	ID        int64  `json:"id"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Username  string `json:"username"`
+}
+
 // ValidateWithTelegram validates Telegram Web Login data and returns user info
 func (s *TelegramAuthService) ValidateWithTelegram(authData TelegramAuthData) (*TelegramUserInfo, error) {
 	if s.botToken == "" {
@@ -73,6 +82,89 @@ func (s *TelegramAuthService) ValidateWithTelegram(authData TelegramAuthData) (*
 		FirstName: authData.FirstName,
 		LastName:  authData.LastName,
 		Username:  authData.Username,
+	}, nil
+}
+
+// ValidateWebAppInitData validates Telegram WebApp initData and returns user info
+func (s *TelegramAuthService) ValidateWebAppInitData(initData string) (*TelegramUserInfo, error) {
+	if s.botToken == "" {
+		return nil, errors.New("telegram bot token not configured")
+	}
+	if strings.TrimSpace(initData) == "" {
+		return nil, errors.New("tg_init_data is required")
+	}
+
+	values, err := url.ParseQuery(initData)
+	if err != nil {
+		return nil, errors.New("invalid tg_init_data")
+	}
+
+	hash := values.Get("hash")
+	if hash == "" {
+		return nil, errors.New("hash is required")
+	}
+
+	// Check auth_date if present (24 hours)
+	if authDateStr := values.Get("auth_date"); authDateStr != "" {
+		authDate, err := strconv.ParseInt(authDateStr, 10, 64)
+		if err != nil {
+			return nil, errors.New("invalid auth_date")
+		}
+		if time.Now().Unix()-authDate > 86400 {
+			return nil, errors.New("authentication data expired")
+		}
+	}
+
+	// Build data_check_string from all fields except hash
+	keys := make([]string, 0, len(values))
+	for k := range values {
+		if k == "hash" {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var parts []string
+	for _, k := range keys {
+		if len(values[k]) == 0 {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s=%s", k, values[k][0]))
+	}
+	dataCheckString := strings.Join(parts, "\n")
+
+	// secret_key = HMAC_SHA256("WebAppData", botToken)
+	secretMAC := hmac.New(sha256.New, []byte("WebAppData"))
+	secretMAC.Write([]byte(s.botToken))
+	secretKey := secretMAC.Sum(nil)
+
+	mac := hmac.New(sha256.New, secretKey)
+	mac.Write([]byte(dataCheckString))
+	expectedHash := hex.EncodeToString(mac.Sum(nil))
+
+	if !hmac.Equal([]byte(expectedHash), []byte(hash)) {
+		return nil, errors.New("invalid hash")
+	}
+
+	userStr := values.Get("user")
+	if userStr == "" {
+		return nil, errors.New("user is required")
+	}
+
+	var webUser telegramWebAppUser
+	if err := json.Unmarshal([]byte(userStr), &webUser); err != nil {
+		return nil, errors.New("invalid user data")
+	}
+	if webUser.ID == 0 {
+		return nil, errors.New("telegram user ID is required")
+	}
+
+	return &TelegramUserInfo{
+		ID:        webUser.ID,
+		FirstName: webUser.FirstName,
+		LastName:  webUser.LastName,
+		Username:  webUser.Username,
 	}, nil
 }
 
