@@ -14,6 +14,7 @@ type UserRepository interface {
 	GetUserBySessionAndIP(ctx context.Context, sessionID string, ipAddress string) (*domain.User, error)
 	CreateOrUpdateUserBySession(sessionID string, ipAddress string) error
 	CreateOrUpdateUserWithGoogleInfo(ctx context.Context, userUUID string, googleID string) error
+	CreateOrUpdateUserWithTelegramInfo(ctx context.Context, userUUID string, telegramID int64, telegramUsername string, telegramFirstName string, telegramLastName string) error
 }
 
 type InMemoryUserRepository struct {
@@ -65,6 +66,11 @@ func (r *InMemoryUserRepository) CreateOrUpdateUserBySession(sessionID string, i
 }
 
 func (r *InMemoryUserRepository) CreateOrUpdateUserWithGoogleInfo(ctx context.Context, userUUID string, googleID string) error {
+	// In-memory repository doesn't support user creation
+	return nil
+}
+
+func (r *InMemoryUserRepository) CreateOrUpdateUserWithTelegramInfo(ctx context.Context, userUUID string, telegramID int64, telegramUsername string, telegramFirstName string, telegramLastName string) error {
 	// In-memory repository doesn't support user creation
 	return nil
 }

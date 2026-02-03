@@ -211,3 +211,36 @@ func (r *PostgresUserRepository) CreateOrUpdateUserWithGoogleInfo(ctx context.Co
 
 	return nil
 }
+
+// CreateOrUpdateUserWithTelegramInfo creates or updates a user with Telegram OAuth information
+func (r *PostgresUserRepository) CreateOrUpdateUserWithTelegramInfo(ctx context.Context, userUUID string, telegramID int64, telegramUsername string, telegramFirstName string, telegramLastName string) error {
+	if userUUID == "" {
+		return fmt.Errorf("user_uuid is required")
+	}
+	if telegramID == 0 {
+		return fmt.Errorf("telegram_id is required")
+	}
+
+	// Use INSERT ... ON CONFLICT to handle both create and update cases
+	// If user exists (by user_uuid), update Telegram info; if not, create new user with Telegram info
+	insertQuery := `
+		INSERT INTO users (user_uuid, telegram_id, telegram_username, telegram_first_name, telegram_last_name, authorized_fully, auth_provider, last_login_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, TRUE, 'telegram', EXTRACT(EPOCH FROM NOW())::BIGINT * 1000, EXTRACT(EPOCH FROM NOW())::BIGINT * 1000)
+		ON CONFLICT (user_uuid) DO UPDATE 
+		SET telegram_id = EXCLUDED.telegram_id,
+		    telegram_username = EXCLUDED.telegram_username,
+		    telegram_first_name = EXCLUDED.telegram_first_name,
+		    telegram_last_name = EXCLUDED.telegram_last_name,
+		    authorized_fully = TRUE,
+		    auth_provider = 'telegram',
+		    last_login_at = EXTRACT(EPOCH FROM NOW())::BIGINT * 1000,
+		    updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT * 1000
+	`
+
+	_, err := r.pool.Exec(ctx, insertQuery, userUUID, telegramID, telegramUsername, telegramFirstName, telegramLastName)
+	if err != nil {
+		return fmt.Errorf("failed to create or update user with Telegram info: %w", err)
+	}
+
+	return nil
+}

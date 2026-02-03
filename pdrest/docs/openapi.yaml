@@ -289,6 +289,9 @@ paths:
   /auth/telegram/verify:
     get:
       summary: Verify Telegram Web Login
+      description: |
+        Verifies Telegram Web Login data and links it to a user identified by X-SESSION-ID.
+        If no user exists for the session_id, a user is created using session_id + IP (defaults to 127.0.0.1 if IP is not available).
       tags:
         - Authentication
       parameters:
@@ -332,15 +335,38 @@ paths:
           schema:
             type: string
           description: Optional preauth token to link to user after successful authentication
+        - name: X-SESSION-ID
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Session ID to link existing user to Telegram info
       responses:
         '200':
-          description: JWT token pair
+          description: User ID and JWT token pair
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TokenPair'
+                type: object
+                properties:
+                  userID:
+                    type: string
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  expires_in:
+                    type: integer
+                    format: int64
+                required:
+                  - userID
+                  - access_token
+                  - refresh_token
+                  - expires_in
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /user/last_login/{uuid}:
     get:

@@ -844,10 +844,8 @@ func (h *HTTPHandler) VerifyTelegramToken(c echo.Context) error {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "Telegram authentication service unavailable"})
 	}
 
-	// Get optional preauth_token from header or query parameter
-	preauthToken := c.Request().Header.Get("X-Preauth-Token")
-	if preauthToken == "" {
-		preauthToken = c.QueryParam("preauth_token")
+	if h.userService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "User service unavailable"})
 	}
 
 	// Telegram Web Login sends data as query parameters
@@ -886,28 +884,85 @@ func (h *HTTPHandler) VerifyTelegramToken(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
 
-	// Find user by Telegram ID
-	user, err := h.userService.GetUserByTelegramID(telegramUserInfo.ID)
+	// Get X-SESSION-ID header (mandatory)
+	sessionID := c.Request().Header.Get("X-SESSION-ID")
+	if sessionID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "X-SESSION-ID header is required"})
+	}
+
+	// Get client IP (needed if we have to create user by session)
+	ipAddress := c.Request().Header.Get("X-Forwarded-For")
+	if ipAddress == "" {
+		ipAddress = c.Request().Header.Get("X-Real-IP")
+	}
+	if ipAddress == "" {
+		ipAddress = c.RealIP()
+	}
+	if ipAddress == "" {
+		ipAddress = "127.0.0.1"
+	}
+
+	// Find user by session_id
+	ctx := context.Background()
+	sessionUser, err := h.userService.GetUserBySessionID(ctx, sessionID)
 	if err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "user not found"})
+		if strings.Contains(err.Error(), "not found") {
+			if err := h.userService.CreateOrUpdateUserBySession(sessionID, ipAddress); err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+			sessionUser, err = h.userService.GetUserBySessionID(ctx, sessionID)
+			if err != nil {
+				if strings.Contains(err.Error(), "not found") {
+					return c.JSON(http.StatusNotFound, map[string]string{"error": "user not found for session_id"})
+				}
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+		} else {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+	}
+
+	// Check if Telegram ID is already registered to a different user
+	existingUser, err := h.userService.GetUserByTelegramID(telegramUserInfo.ID)
+	if err == nil && existingUser != nil {
+		if existingUser.UserID != sessionUser.UserID {
+			return c.JSON(http.StatusConflict, map[string]string{"error": "Telegram account is already registered to another user"})
+		}
+	} else if err != nil && !strings.Contains(err.Error(), "not found") {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to check existing user: " + err.Error()})
+	}
+
+	// Register user with Telegram info
+	if err := h.userService.RegisterUserWithTelegram(ctx, sessionUser.UserID, telegramUserInfo.ID, telegramUserInfo.Username, telegramUserInfo.FirstName, telegramUserInfo.LastName); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	// Get optional preauth_token from header or query parameter
+	preauthToken := c.Request().Header.Get("X-Preauth-Token")
+	if preauthToken == "" {
+		preauthToken = c.QueryParam("preauth_token")
 	}
 
 	// Link preauth token to user if provided
 	if preauthToken != "" && h.rouletteService != nil {
-		ctx := context.Background()
-		if err := h.rouletteService.LinkPreauthTokenToUser(ctx, preauthToken, user.UserID); err != nil {
+		if err := h.rouletteService.LinkPreauthTokenToUser(ctx, preauthToken, sessionUser.UserID); err != nil {
 			// Log error but don't fail the auth request
 			_ = err
 		}
 	}
 
 	// Generate JWT token pair for the user
-	tokenPair, err := h.authService.GenerateTokenPair(user.UserID)
+	tokenPair, err := h.authService.GenerateTokenPair(sessionUser.UserID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate token"})
 	}
 
-	return c.JSON(http.StatusOK, tokenPair)
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"userID":        sessionUser.UserID,
+		"access_token":  tokenPair.AccessToken,
+		"refresh_token": tokenPair.RefreshToken,
+		"expires_in":    tokenPair.ExpiresIn,
+	})
 }
 
 func (h *HTTPHandler) AvailableEvents(c echo.Context) error {
