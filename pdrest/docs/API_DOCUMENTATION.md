@@ -153,6 +153,9 @@ Google OAuth2 callback (returns JWT).
 **Query Parameters:**
 - `code` - OAuth2 authorization code
 
+**Headers (optional):**
+- `code` - OAuth2 authorization code (if not provided in query)
+
 **Response:**
 ```json
 {

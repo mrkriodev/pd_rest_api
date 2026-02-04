@@ -979,6 +979,9 @@ func (h *HTTPHandler) GoogleOAuthCallback(c echo.Context) error {
 
 	code := c.QueryParam("code")
 	if strings.TrimSpace(code) == "" {
+		code = c.Request().Header.Get("code")
+	}
+	if strings.TrimSpace(code) == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "code is required"})
 	}
 
