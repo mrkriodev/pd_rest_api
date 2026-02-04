@@ -55,7 +55,9 @@ type TelegramConfig struct {
 }
 
 type GoogleConfig struct {
-	ClientID string
+	ClientID     string
+	ClientSecret string
+	RedirectURL  string
 }
 
 func Load() *Config {
@@ -122,7 +124,9 @@ func Load() *Config {
 			BotToken: getEnv("TELEGRAM_BOT_TOKEN", ""),
 		},
 		Google: GoogleConfig{
-			ClientID: getEnv("GOOGLE_CLIENT_ID", ""),
+			ClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
+			ClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
+			RedirectURL:  getEnv("GOOGLE_REDIRECT_URL", ""),
 		},
 	}
 }

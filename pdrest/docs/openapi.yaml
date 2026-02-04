@@ -286,6 +286,165 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
+  /auth/google/registeroauth2:
+    post:
+      summary: Register a user with Google OAuth2 code
+      description: |
+        Exchanges an OAuth2 authorization code for an ID token, validates it, and registers/updates a user.
+        Requires X-SESSION-ID header.
+      tags:
+        - Authentication
+      parameters:
+        - name: X-SESSION-ID
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Session ID to link existing user to Google info
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                redirect_uri:
+                  type: string
+                  description: Optional override for configured redirect URL
+              required:
+                - code
+      responses:
+        '200':
+          description: User ID and JWT token pair
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userID:
+                    type: string
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  expires_in:
+                    type: integer
+                    format: int64
+                required:
+                  - userID
+                  - access_token
+                  - refresh_token
+                  - expires_in
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Conflict - Google account already registered to another user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /auth/google/callback:
+    get:
+      summary: Google OAuth2 callback (returns JWT)
+      description: |
+        Handles Google OAuth2 redirect (GET), validates ID token, and returns JWT for the user.
+      tags:
+        - Authentication
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User ID and JWT token pair
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userID:
+                    type: string
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  expires_in:
+                    type: integer
+                    format: int64
+                required:
+                  - userID
+                  - access_token
+                  - refresh_token
+                  - expires_in
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /googlecallback:
+    get:
+      summary: Google OAuth2 callback (returns JWT)
+      description: |
+        Alias for /auth/google/callback to support multiple redirect URLs.
+      tags:
+        - Authentication
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User ID and JWT token pair
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userID:
+                    type: string
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  expires_in:
+                    type: integer
+                    format: int64
+                required:
+                  - userID
+                  - access_token
+                  - refresh_token
+                  - expires_in
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
   /auth/telegram/login:
     post:
       summary: Telegram login (registers user)
@@ -367,6 +526,51 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /auth/telegram/callback:
+    get:
+      summary: Telegram WebApp callback (returns JWT)
+      description: |
+        Handles Telegram WebApp redirect (GET), validates tgWebAppData, and returns JWT for existing user.
+      tags:
+        - Authentication
+      parameters:
+        - name: tgWebAppData
+          in: query
+          required: true
+          schema:
+            type: string
+          description: window.Telegram.WebApp.tgInitData
+      responses:
+        '200':
+          description: User ID and JWT token pair
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userID:
+                    type: string
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  expires_in:
+                    type: integer
+                    format: int64
+                required:
+                  - userID
+                  - access_token
+                  - refresh_token
+                  - expires_in
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /auth/telegram/webapp:
     post:

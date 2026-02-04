@@ -116,6 +116,83 @@ Verify Google OAuth token and return JWT token pair.
 }
 ```
 
+#### POST /api/auth/google/registeroauth2
+Google OAuth2 code registration (registers user) and returns JWT token pair.
+
+**Headers:**
+- `X-SESSION-ID` (required)
+
+**Request Body:**
+```json
+{
+  "code": "<oauth2_code>",
+  "redirect_uri": "<optional_redirect_uri>"
+}
+```
+
+**Response:**
+```json
+{
+  "userID": "user-uuid",
+  "access_token": "jwt_access_token",
+  "refresh_token": "jwt_refresh_token",
+  "expires_in": 3600
+}
+```
+
+**Error Response (401):**
+```json
+{
+  "error": "failed to exchange code"
+}
+```
+
+#### GET /api/auth/google/callback
+Google OAuth2 callback (returns JWT).
+
+**Query Parameters:**
+- `code` - OAuth2 authorization code
+
+**Response:**
+```json
+{
+  "userID": "user-uuid",
+  "access_token": "jwt_access_token",
+  "refresh_token": "jwt_refresh_token",
+  "expires_in": 3600
+}
+```
+
+**Error Response (401):**
+```json
+{
+  "error": "failed to exchange code"
+}
+```
+
+#### GET /api/googlecallback
+Google OAuth2 callback alias (returns JWT).
+
+**Query Parameters:**
+- `code` - OAuth2 authorization code
+
+**Response:**
+```json
+{
+  "userID": "user-uuid",
+  "access_token": "jwt_access_token",
+  "refresh_token": "jwt_refresh_token",
+  "expires_in": 3600
+}
+```
+
+**Error Response (401):**
+```json
+{
+  "error": "failed to exchange code"
+}
+```
+
 #### POST /api/auth/telegram/login
 Telegram login (registers user) and returns JWT token pair.
 
@@ -141,6 +218,35 @@ Telegram login (registers user) and returns JWT token pair.
 ```json
 {
   "error": "invalid hash"
+}
+```
+
+#### GET /api/auth/telegram/callback
+Telegram WebApp callback (returns JWT for existing user).
+
+**Query Parameters:**
+- `tgWebAppData` - `window.Telegram.WebApp.tgInitData`
+
+**Response:**
+```json
+{
+  "userID": "user-uuid",
+  "access_token": "jwt_access_token",
+  "refresh_token": "jwt_refresh_token",
+  "expires_in": 3600
+}
+```
+
+**Error Response (401):**
+```json
+{
+  "error": "invalid hash"
+}
+```
+**Error Response (404):**
+```json
+{
+  "error": "user not found"
 }
 ```
 
@@ -468,7 +574,11 @@ All endpoints may return the following error responses:
 
 1. **Get JWT Token:**
    - Use `/api/auth/google/verify` with Google token, OR
+   - Use `/api/auth/google/registeroauth2` with Google OAuth2 code, OR
+   - Use `/api/auth/google/callback` with Google OAuth2 code (redirect), OR
+   - Use `/api/googlecallback` with Google OAuth2 code (redirect alias), OR
    - Use `/api/auth/telegram/login` with Telegram auth data, OR
+   - Use `/api/auth/telegram/callback` for Telegram web login redirect, OR
    - Use `/api/auth/telegram/webapp` with Telegram WebApp tgInitData
 
 2. **Use JWT Token:**

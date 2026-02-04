@@ -96,6 +96,14 @@ func (s *UserService) RegisterUserWithGoogle(ctx context.Context, userUUID strin
 	return s.repo.CreateOrUpdateUserWithGoogleInfo(ctx, userUUID, googleID)
 }
 
+// RegisterUserWithGoogleByGoogleID creates or updates a user by google_id and returns user UUID
+func (s *UserService) RegisterUserWithGoogleByGoogleID(ctx context.Context, googleID string) (string, error) {
+	if googleID == "" {
+		return "", errors.New("google_id is required")
+	}
+	return s.repo.CreateOrUpdateUserWithGoogleInfoByGoogleID(ctx, googleID)
+}
+
 // RegisterUserWithTelegram registers or updates a user with Telegram OAuth information
 func (s *UserService) RegisterUserWithTelegram(ctx context.Context, userUUID string, telegramID int64, telegramUsername string, telegramFirstName string, telegramLastName string) error {
 	if userUUID == "" {

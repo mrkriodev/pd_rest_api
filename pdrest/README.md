@@ -70,6 +70,9 @@ go build -o build/server.exe ./cmd/server
 - `JWT_ACCESS_TOKEN_TTL_HOURS` - Access token TTL in hours (default: 72)
 - `JWT_REFRESH_TOKEN_TTL_HOURS` - Refresh token TTL in hours (default: 72)
 - `JWT_STRICT_MODE` - If false, only checks that token is non-empty (default: true)
+- `GOOGLE_CLIENT_ID` - Google OAuth client ID (optional)
+- `GOOGLE_CLIENT_SECRET` - Google OAuth client secret (optional)
+- `GOOGLE_REDIRECT_URL` - Google OAuth redirect URL (optional)
 - `TELEGRAM_BOT_TOKEN` - Telegram bot token for hash verification (optional, if not set hash verification is disabled)
 
 ## API Documentation
@@ -91,9 +94,14 @@ You can use these OpenAPI specs with Swagger UI or other OpenAPI tools:
 
 - `GET /api/status` - Health check
 - `POST /api/auth/refresh` - Refresh JWT token (requires refresh_token in body)
-- `GET /api/auth/status` - Check JWT authorization status, returns UUID if valid (requires JWT Bearer token)
+- `POST /api/auth/status` - Check JWT authorization status, returns UUID if valid (requires JWT Bearer token)
 - `GET /api/auth/google/verify` - Verify Google OAuth token and return JWT token pair (requires Google Bearer token in Authorization header)
+- `POST /api/auth/google/register` - Google registration (registers user) and returns JWT token pair (requires X-SESSION-ID header)
+- `POST /api/auth/google/registeroauth2` - Google OAuth2 code registration (registers user) and returns JWT token pair (requires X-SESSION-ID header)
+- `GET /api/auth/google/callback` - Google OAuth2 callback (returns JWT for user) (accepts code as query parameter)
+- `GET /api/googlecallback` - Google OAuth2 callback alias (returns JWT for user) (accepts code as query parameter)
 - `POST /api/auth/telegram/login` - Telegram login (registers user) and returns JWT token pair (accepts Telegram auth data as query parameters or JSON body)
+- `GET /api/auth/telegram/callback` - Telegram WebApp callback (returns JWT for existing user) (accepts tgWebAppData as query parameter)
 - `POST /api/auth/telegram/webapp` - Telegram WebApp login (registers user) and returns JWT token pair (accepts tgInitData in JSON body)
 - `GET /api/user/last_login/:uuid` - Get user last login time by UUID (requires JWT Bearer token)
 - `GET /api/user/profile/:uuid` - Get user profile (uuid and username) by UUID (requires JWT Bearer token)

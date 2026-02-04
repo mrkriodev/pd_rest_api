@@ -212,6 +212,31 @@ func (r *PostgresUserRepository) CreateOrUpdateUserWithGoogleInfo(ctx context.Co
 	return nil
 }
 
+// CreateOrUpdateUserWithGoogleInfoByGoogleID creates or updates a user with Google OAuth information by google_id
+func (r *PostgresUserRepository) CreateOrUpdateUserWithGoogleInfoByGoogleID(ctx context.Context, googleID string) (string, error) {
+	if googleID == "" {
+		return "", fmt.Errorf("google_id is required")
+	}
+
+	insertQuery := `
+		INSERT INTO users (google_id, authorized_fully, auth_provider, last_login_at, updated_at)
+		VALUES ($1, TRUE, 'google', EXTRACT(EPOCH FROM NOW())::BIGINT * 1000, EXTRACT(EPOCH FROM NOW())::BIGINT * 1000)
+		ON CONFLICT (google_id) DO UPDATE 
+		SET authorized_fully = TRUE,
+		    auth_provider = 'google',
+		    last_login_at = EXTRACT(EPOCH FROM NOW())::BIGINT * 1000,
+		    updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT * 1000
+		RETURNING user_uuid
+	`
+
+	var userUUID string
+	if err := r.pool.QueryRow(ctx, insertQuery, googleID).Scan(&userUUID); err != nil {
+		return "", fmt.Errorf("failed to create or update user with Google info: %w", err)
+	}
+
+	return userUUID, nil
+}
+
 // CreateOrUpdateUserWithTelegramInfo creates or updates a user with Telegram OAuth information
 func (r *PostgresUserRepository) CreateOrUpdateUserWithTelegramInfo(ctx context.Context, userUUID string, telegramID int64, telegramUsername string, telegramFirstName string, telegramLastName string) error {
 	if userUUID == "" {

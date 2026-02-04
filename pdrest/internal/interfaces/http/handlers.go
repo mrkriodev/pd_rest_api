@@ -16,6 +16,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
+	"golang.org/x/oauth2"
 	"gopkg.in/yaml.v3"
 )
 
@@ -28,12 +29,13 @@ type HTTPHandler struct {
 	achievementService  *services.AchievementService
 	authService         *services.AuthService
 	googleAuthService   *services.GoogleAuthService
+	googleOAuthConfig   *oauth2.Config
 	telegramAuthService *services.TelegramAuthService
 	jwtSecretKey        string
 	jwtStrictMode       bool
 }
 
-func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingService *services.RatingService, eventService *services.EventService, rouletteService *services.RouletteService, betService *services.BetService, achievementService *services.AchievementService, authService *services.AuthService, googleAuthService *services.GoogleAuthService, telegramAuthService *services.TelegramAuthService, jwtSecretKey string, jwtStrictMode bool) {
+func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingService *services.RatingService, eventService *services.EventService, rouletteService *services.RouletteService, betService *services.BetService, achievementService *services.AchievementService, authService *services.AuthService, googleAuthService *services.GoogleAuthService, googleOAuthConfig *oauth2.Config, telegramAuthService *services.TelegramAuthService, jwtSecretKey string, jwtStrictMode bool) {
 	h := &HTTPHandler{
 		userService:         userService,
 		ratingService:       ratingService,
@@ -43,12 +45,16 @@ func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingServi
 		achievementService:  achievementService,
 		authService:         authService,
 		googleAuthService:   googleAuthService,
+		googleOAuthConfig:   googleOAuthConfig,
 		telegramAuthService: telegramAuthService,
 		jwtSecretKey:        jwtSecretKey,
 		jwtStrictMode:       jwtStrictMode,
 	}
 
 	api := e.Group("/api")
+	// OAuth2 redirect (non-API root path for external providers)
+	e.GET("/auth/google/callback", h.GoogleOAuthCallback)
+	e.GET("/googlecallback", h.GoogleOAuthCallback)
 	api.GET("/status", h.Status)
 	api.GET("/available_events", h.AvailableEvents)
 	api.GET("/available_achievements", h.AvailableAchievements)
@@ -68,9 +74,12 @@ func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingServi
 	googleAuth := auth.Group("/google")
 	googleAuth.GET("/verify", h.VerifyGoogleToken)
 	googleAuth.POST("/register", h.RegisterGoogleUser)
+	googleAuth.POST("/registeroauth2", h.RegisterGoogleUserOAuth2)
+	googleAuth.GET("/callback", h.GoogleOAuthCallback)
 	telegramAuth := auth.Group("/telegram")
 	telegramAuth.POST("/login", h.TelegramLogin)
 	telegramAuth.POST("/webapp", h.TelegramWebAppLogin)
+	telegramAuth.GET("/callback", h.TelegramCallback)
 
 	// User endpoints (protected by JWT)
 	user := api.Group("/user")
@@ -115,6 +124,10 @@ Available endpoints:
 - GET /api/auth/google/verify - Verify Google OAuth token
 - POST /api/auth/telegram/login - Telegram login (registers user)
 - POST /api/auth/telegram/webapp - Telegram WebApp login (registers user)
+- GET /api/auth/telegram/callback - Telegram WebApp callback (returns JWT for existing user)
+- POST /api/auth/google/registeroauth2 - Google OAuth2 code registration (registers user)
+- GET /api/auth/google/callback - Google OAuth2 callback (returns JWT for user)
+- GET /api/googlecallback - Google OAuth2 callback alias (returns JWT for user)
 - GET /api/user/last_login/:uuid - Get user last login time
 - GET /api/user/profile/:uuid - Get user profile
 - POST /api/user/openbet - Create a new bet
@@ -841,6 +854,168 @@ func (h *HTTPHandler) RegisterGoogleUser(c echo.Context) error {
 	})
 }
 
+// RegisterGoogleUserOAuth2 registers a user using Google OAuth2 authorization code
+func (h *HTTPHandler) RegisterGoogleUserOAuth2(c echo.Context) error {
+	if h.googleAuthService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "Google authentication service unavailable"})
+	}
+	if h.googleOAuthConfig == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "Google OAuth2 configuration unavailable"})
+	}
+	if h.userService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "User service unavailable"})
+	}
+
+	var req struct {
+		Code        string `json:"code"`
+		RedirectURI string `json:"redirect_uri"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+	if strings.TrimSpace(req.Code) == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "code is required"})
+	}
+
+	// Get X-SESSION-ID header (mandatory)
+	sessionID := c.Request().Header.Get("X-SESSION-ID")
+	if sessionID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "X-SESSION-ID header is required"})
+	}
+
+	// Get client IP (needed if we have to create user by session)
+	ipAddress := c.Request().Header.Get("X-Forwarded-For")
+	if ipAddress == "" {
+		ipAddress = c.Request().Header.Get("X-Real-IP")
+	}
+	if ipAddress == "" {
+		ipAddress = c.RealIP()
+	}
+	if ipAddress == "" {
+		ipAddress = "127.0.0.1"
+	}
+
+	oauthConfig := h.googleOAuthConfig
+	if strings.TrimSpace(req.RedirectURI) != "" && oauthConfig.RedirectURL != req.RedirectURI {
+		copyCfg := *oauthConfig
+		copyCfg.RedirectURL = req.RedirectURI
+		oauthConfig = &copyCfg
+	}
+
+	ctx := context.Background()
+	token, err := oauthConfig.Exchange(ctx, req.Code)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "failed to exchange code"})
+	}
+
+	idToken, _ := token.Extra("id_token").(string)
+	if idToken == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing id_token"})
+	}
+
+	googleUserInfo, err := h.googleAuthService.ValidateWithGoogle(idToken)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
+
+	// Find user by session_id
+	sessionUser, err := h.userService.GetUserBySessionID(ctx, sessionID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			if err := h.userService.CreateOrUpdateUserBySession(sessionID, ipAddress); err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+			sessionUser, err = h.userService.GetUserBySessionID(ctx, sessionID)
+			if err != nil {
+				if strings.Contains(err.Error(), "not found") {
+					return c.JSON(http.StatusNotFound, map[string]string{"error": "user not found for session_id"})
+				}
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+		} else {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+	}
+
+	// Check if Google ID is already registered to a different user
+	existingUser, err := h.userService.GetUserByGoogleID(googleUserInfo.ID)
+	if err == nil && existingUser != nil {
+		if existingUser.UserID != sessionUser.UserID {
+			return c.JSON(http.StatusConflict, map[string]string{"error": "Google account is already registered to another user"})
+		}
+	} else if err != nil && !strings.Contains(err.Error(), "not found") {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to check existing user: " + err.Error()})
+	}
+
+	// Register user with Google info
+	if err := h.userService.RegisterUserWithGoogle(ctx, sessionUser.UserID, googleUserInfo.ID); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	tokenPair, err := h.authService.GenerateTokenPair(sessionUser.UserID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate token"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"userID":        sessionUser.UserID,
+		"access_token":  tokenPair.AccessToken,
+		"refresh_token": tokenPair.RefreshToken,
+		"expires_in":    tokenPair.ExpiresIn,
+	})
+}
+
+// GoogleOAuthCallback handles Google OAuth2 redirect (GET)
+func (h *HTTPHandler) GoogleOAuthCallback(c echo.Context) error {
+	if h.googleAuthService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "Google authentication service unavailable"})
+	}
+	if h.googleOAuthConfig == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "Google OAuth2 configuration unavailable"})
+	}
+	if h.userService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "User service unavailable"})
+	}
+
+	code := c.QueryParam("code")
+	if strings.TrimSpace(code) == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "code is required"})
+	}
+
+	ctx := context.Background()
+	token, err := h.googleOAuthConfig.Exchange(ctx, code)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "failed to exchange code"})
+	}
+
+	idToken, _ := token.Extra("id_token").(string)
+	if idToken == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "missing id_token"})
+	}
+
+	googleUserInfo, err := h.googleAuthService.ValidateWithGoogle(idToken)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
+
+	userID, err := h.userService.RegisterUserWithGoogleByGoogleID(ctx, googleUserInfo.ID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	tokenPair, err := h.authService.GenerateTokenPair(userID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate token"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"userID":        userID,
+		"access_token":  tokenPair.AccessToken,
+		"refresh_token": tokenPair.RefreshToken,
+		"expires_in":    tokenPair.ExpiresIn,
+	})
+}
+
 func (h *HTTPHandler) TelegramLogin(c echo.Context) error {
 	if h.telegramAuthService == nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "Telegram authentication service unavailable"})
@@ -987,6 +1162,46 @@ func (h *HTTPHandler) TelegramWebAppLogin(c echo.Context) error {
 	}
 
 	telegramUserInfo, err := h.telegramAuthService.ValidateWebAppInitData(req.TgInitData)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
+
+	existingUser, err := h.userService.GetUserByTelegramID(telegramUserInfo.ID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "user not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	tokenPair, err := h.authService.GenerateTokenPair(existingUser.UserID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate token"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"userID":        existingUser.UserID,
+		"access_token":  tokenPair.AccessToken,
+		"refresh_token": tokenPair.RefreshToken,
+		"expires_in":    tokenPair.ExpiresIn,
+	})
+}
+
+// TelegramCallback handles Telegram WebApp redirect (GET)
+func (h *HTTPHandler) TelegramCallback(c echo.Context) error {
+	if h.telegramAuthService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "Telegram authentication service unavailable"})
+	}
+	if h.userService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "User service unavailable"})
+	}
+
+	tgWebAppData := c.QueryParam("tgWebAppData")
+	if strings.TrimSpace(tgWebAppData) == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "tgWebAppData is required"})
+	}
+
+	telegramUserInfo, err := h.telegramAuthService.ValidateWebAppInitData(tgWebAppData)
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}

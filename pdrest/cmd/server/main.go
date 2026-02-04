@@ -16,6 +16,8 @@ import (
 	"pdrest/internal/interfaces/services"
 
 	"github.com/labstack/echo/v4"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 )
 
 func main() {
@@ -74,6 +76,19 @@ func main() {
 		googleAuthService = nil
 	}
 
+	var googleOAuthConfig *oauth2.Config
+	if cfg.Google.ClientID != "" && cfg.Google.ClientSecret != "" {
+		googleOAuthConfig = &oauth2.Config{
+			ClientID:     cfg.Google.ClientID,
+			ClientSecret: cfg.Google.ClientSecret,
+			RedirectURL:  cfg.Google.RedirectURL,
+			Endpoint:     google.Endpoint,
+			Scopes:       []string{"openid", "email", "profile"},
+		}
+	} else {
+		log.Println("Warning: GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET not configured, Google OAuth2 code exchange will be unavailable")
+	}
+
 	// Create Telegram auth service
 	telegramAuthService := services.NewTelegramAuthService(cfg.Telegram.BotToken)
 	if cfg.Telegram.BotToken == "" {
@@ -121,12 +136,12 @@ func main() {
 	}
 
 	// Register HTTP handlers (eventService, rouletteService, betService, and achievementService may be nil if database unavailable)
-	http.NewHTTPHandler(e, userService, ratingService, eventService, rouletteService, betService, achievementService, authService, googleAuthService, telegramAuthService, cfg.JWT.SecretKey, cfg.JWT.StrictMode)
+	http.NewHTTPHandler(e, userService, ratingService, eventService, rouletteService, betService, achievementService, authService, googleAuthService, googleOAuthConfig, telegramAuthService, cfg.JWT.SecretKey, cfg.JWT.StrictMode)
 
 	// Start server in a goroutine
 	addr := cfg.GetAddress()
 	fmt.Printf("Server starting on %s\n", addr)
-	
+
 	go func() {
 		if err := e.Start(addr); err != nil {
 			log.Fatal(err)
@@ -137,20 +152,20 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 	<-quit
-	
+
 	log.Println("Shutting down server...")
-	
+
 	// Gracefully shutdown bet scheduler first
 	if betScheduler != nil {
 		betScheduler.Shutdown()
 	}
-	
+
 	// Gracefully shutdown Echo server
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := e.Shutdown(ctx); err != nil {
 		log.Fatal(err)
 	}
-	
+
 	log.Println("Server exited")
 }
