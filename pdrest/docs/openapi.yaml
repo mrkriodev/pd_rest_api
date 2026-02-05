@@ -978,7 +978,7 @@ paths:
       description: |
         Performs a roulette spin. If preauth_token is not provided (via header, query, or body),
         it will be generated from X-SESSION-ID and IP address (same as get_preauth_token endpoint).
-        Authorization header is optional for roulette_id=1 (startup roulette), but required for all other roulette ids.
+        Authorization header is required for roulette_id != 1. Optional for roulette_id = 1; if provided, preauth_token is linked to that user.
       tags:
         - Roulette
       parameters:
@@ -987,7 +987,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Bearer token. Required for roulette_id != 1, optional for roulette_id=1. Also required for event roulette (during_event).
+          description: Bearer token. Required for roulette_id != 1; optional for roulette_id = 1. If provided, preauth_token is linked to this user.
         - name: X-Preauth-Token
           in: header
           required: false

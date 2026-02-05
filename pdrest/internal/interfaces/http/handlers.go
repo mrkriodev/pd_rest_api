@@ -1498,12 +1498,19 @@ func (h *HTTPHandler) Spin(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "roulette_id is required"})
 	}
 
-	// JWT is required for roulette id != 1
-	if req.RouletteID != 1 {
+	// Authorization required for roulette_id != 1; optional for roulette_id = 1
+	var authUserID string
+	authHeader := c.Request().Header.Get("Authorization")
+	if strings.TrimSpace(authHeader) == "" {
+		if req.RouletteID != 1 {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authorization required for this roulette"})
+		}
+	} else {
 		userID, err := h.validateJWTToken(c)
 		if err != nil {
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authorization required for this roulette: " + err.Error()})
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid authorization: " + err.Error()})
 		}
+		authUserID = userID
 		// Store userID in context for potential future use
 		c.Set("userID", userID)
 	}
@@ -1538,7 +1545,6 @@ func (h *HTTPHandler) Spin(c echo.Context) error {
 
 	ctx := context.Background()
 	// Pass Authorization header for event-based roulette auth enforcement
-	authHeader := c.Request().Header.Get("Authorization")
 	ctx = context.WithValue(ctx, services.ContextKeyAuthHeader, authHeader)
 
 	// Pass session_id and IP for preauth token generation if needed
@@ -1547,6 +1553,22 @@ func (h *HTTPHandler) Spin(c echo.Context) error {
 	}
 	if ipAddress != "" {
 		ctx = context.WithValue(ctx, services.ContextKeyIPAddress, ipAddress)
+	}
+
+	// If JWT is provided, ensure preauth token exists and link it to the user
+	if authUserID != "" && h.rouletteService != nil {
+		if preauthToken == "" && sessionID != "" && ipAddress != "" {
+			token, err := h.rouletteService.GetPreauthToken(ctx, sessionID, ipAddress)
+			if err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+			preauthToken = token
+		}
+		if preauthToken != "" {
+			if err := h.rouletteService.LinkPreauthTokenToUser(ctx, preauthToken, authUserID); err != nil {
+				_ = err
+			}
+		}
 	}
 
 	// Pass preauthToken only as parameter (Spin method doesn't use req.PreauthToken)

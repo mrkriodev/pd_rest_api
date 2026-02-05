@@ -481,6 +481,11 @@ Get roulette status by preauth token.
 #### POST /api/roulette/spin
 Perform a spin using preauth token.
 
+**Headers:**
+- `Authorization: Bearer <token>` (required for roulette_id != 1; optional for roulette_id = 1; if provided, preauth_token is linked to this user)
+- `X-Preauth-Token` (optional)
+- `X-SESSION-ID` (optional, required if preauth_token is not provided)
+
 **Request Body:**
 ```json
 {
