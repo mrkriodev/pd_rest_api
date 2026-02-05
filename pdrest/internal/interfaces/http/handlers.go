@@ -1639,7 +1639,7 @@ func (h *HTTPHandler) TakePrize(c echo.Context) error {
 	// Create context with session_id and IP for internal registration and token generation
 	ctx := context.Background()
 	// Pass Authorization header for event-based roulette auth enforcement
-	authHeader := c.Request().Header.Get("Authorization")
+	authHeader = c.Request().Header.Get("Authorization")
 	ctx = context.WithValue(ctx, services.ContextKeyAuthHeader, authHeader)
 
 	if sessionID != "" {
