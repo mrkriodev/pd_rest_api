@@ -1583,27 +1583,20 @@ func (h *HTTPHandler) TakePrize(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "roulette_id is required"})
 	}
 
-	// JWT is required for roulette id != 1
-	if req.RouletteID != 1 {
+	// Authorization required for roulette_id != 1; optional for roulette_id = 1
+	var authUserID string
+	authHeader := c.Request().Header.Get("Authorization")
+	if strings.TrimSpace(authHeader) == "" {
+		if req.RouletteID != 1 {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authorization required for this roulette"})
+		}
+	} else {
 		userID, err := h.validateJWTToken(c)
 		if err != nil {
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authorization required for this roulette: " + err.Error()})
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid authorization: " + err.Error()})
 		}
-		// Store userID in context for potential future use
+		authUserID = userID
 		c.Set("userID", userID)
-	}
-
-	// Optional JWT for roulette_id = 1 (if provided, ensure it is valid)
-	var authUserID string
-	if req.RouletteID == 1 {
-		if authHeader := c.Request().Header.Get("Authorization"); strings.TrimSpace(authHeader) != "" {
-			userID, err := h.validateJWTToken(c)
-			if err != nil {
-				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid authorization: " + err.Error()})
-			}
-			authUserID = userID
-			c.Set("userID", userID)
-		}
 	}
 
 	// Get preauth_token from header, query, or body (optional)

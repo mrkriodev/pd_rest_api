@@ -501,7 +501,7 @@ Perform a spin using preauth token.
 Take prize after completing all spins.
 
 **Headers:**
-- `Authorization: Bearer <token>` (optional for roulette_id=1; if provided, preauth_token is linked to this user; required for roulette_id != 1)
+- `Authorization: Bearer <token>` (required for roulette_id != 1; optional for roulette_id = 1; if provided, preauth_token is linked to this user)
 - `X-Preauth-Token` (optional)
 - `X-SESSION-ID` (optional, required if preauth_token is not provided)
 

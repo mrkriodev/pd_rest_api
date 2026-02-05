@@ -1034,7 +1034,7 @@ paths:
         it will be generated from X-SESSION-ID and IP address. A user will be created
         if X-SESSION-ID and IP are provided but the user doesn't exist.
         Returns preauth_token in response if the user was unregistered.
-        Authorization header is optional for roulette_id=1 (startup roulette), but required for all other roulette ids.
+        Authorization header is required for roulette_id != 1. Optional for roulette_id = 1; if provided, preauth_token is linked to that user.
       tags:
         - Roulette
       parameters:
@@ -1043,7 +1043,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Bearer token. Optional for roulette_id=1; if provided, preauth_token is linked to this user. Required for roulette_id != 1.
+          description: Bearer token. Required for roulette_id != 1; optional for roulette_id = 1. If provided, preauth_token is linked to this user.
         - name: X-SESSION-ID
           in: header
           required: false
