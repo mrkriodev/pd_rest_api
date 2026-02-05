@@ -1043,7 +1043,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Bearer token. Required for roulette_id != 1, optional for roulette_id=1. Also required for event roulette (during_event).
+          description: Bearer token. Optional for roulette_id=1; if provided, preauth_token is linked to this user. Required for roulette_id != 1.
         - name: X-SESSION-ID
           in: header
           required: false

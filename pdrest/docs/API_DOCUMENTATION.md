@@ -500,6 +500,11 @@ Perform a spin using preauth token.
 #### POST /api/roulette/take-prize
 Take prize after completing all spins.
 
+**Headers:**
+- `Authorization: Bearer <token>` (optional for roulette_id=1; if provided, preauth_token is linked to this user; required for roulette_id != 1)
+- `X-Preauth-Token` (optional)
+- `X-SESSION-ID` (optional, required if preauth_token is not provided)
+
 **Request Body:**
 ```json
 {

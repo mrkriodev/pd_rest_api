@@ -1593,6 +1593,19 @@ func (h *HTTPHandler) TakePrize(c echo.Context) error {
 		c.Set("userID", userID)
 	}
 
+	// Optional JWT for roulette_id = 1 (if provided, ensure it is valid)
+	var authUserID string
+	if req.RouletteID == 1 {
+		if authHeader := c.Request().Header.Get("Authorization"); strings.TrimSpace(authHeader) != "" {
+			userID, err := h.validateJWTToken(c)
+			if err != nil {
+				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid authorization: " + err.Error()})
+			}
+			authUserID = userID
+			c.Set("userID", userID)
+		}
+	}
+
 	// Get preauth_token from header, query, or body (optional)
 	preauthToken := c.Request().Header.Get("X-Preauth-Token")
 	if preauthToken == "" {
@@ -1641,6 +1654,13 @@ func (h *HTTPHandler) TakePrize(c echo.Context) error {
 	}
 	if ipAddress != "" {
 		ctx = context.WithValue(ctx, services.ContextKeyIPAddress, ipAddress)
+	}
+
+	// If JWT is provided, link preauth token to the authenticated user
+	if authUserID != "" && preauthToken != "" && h.rouletteService != nil {
+		if err := h.rouletteService.LinkPreauthTokenToUser(ctx, preauthToken, authUserID); err != nil {
+			_ = err
+		}
 	}
 
 	response, err := h.rouletteService.TakePrize(ctx, preauthToken, &req)
