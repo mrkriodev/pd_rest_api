@@ -1169,21 +1169,19 @@ func (h *HTTPHandler) TelegramWebAppLogin(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
 
-	existingUser, err := h.userService.GetUserByTelegramID(telegramUserInfo.ID)
+	ctx := context.Background()
+	userID, err := h.userService.RegisterUserWithTelegramByTelegramID(ctx, telegramUserInfo.ID, telegramUserInfo.Username, telegramUserInfo.FirstName, telegramUserInfo.LastName)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "user not found"})
-		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	tokenPair, err := h.authService.GenerateTokenPair(existingUser.UserID)
+	tokenPair, err := h.authService.GenerateTokenPair(userID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate token"})
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"userID":        existingUser.UserID,
+		"userID":        userID,
 		"access_token":  tokenPair.AccessToken,
 		"refresh_token": tokenPair.RefreshToken,
 		"expires_in":    tokenPair.ExpiresIn,
