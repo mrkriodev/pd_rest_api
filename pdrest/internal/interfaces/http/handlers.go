@@ -1352,9 +1352,9 @@ func (h *HTTPHandler) GetRouletteStatus(c echo.Context) error {
 		}
 		ctx := context.Background()
 
-		// If user exists for this session+IP, return status by user UUID
-		if h.userService != nil && sessionID != "" && ipAddress != "" {
-			user, err := h.userService.GetUserBySessionAndIP(ctx, sessionID, ipAddress)
+		// If user exists for this session, return status by user UUID
+		if h.userService != nil && sessionID != "" {
+			user, err := h.userService.GetUserBySessionID(ctx, sessionID)
 			if err == nil && user != nil {
 				status, err := h.rouletteService.GetRouletteStatusByUser(ctx, user.UserID, rouletteID)
 				if err != nil {
