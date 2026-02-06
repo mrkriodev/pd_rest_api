@@ -1064,7 +1064,39 @@ func (h *HTTPHandler) TelegramLogin(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
 
-	// Get X-SESSION-ID header (mandatory)
+	// Get optional preauth_token from header or query parameter
+	preauthToken := c.Request().Header.Get("X-Preauth-Token")
+	if preauthToken == "" {
+		preauthToken = c.QueryParam("preauth_token")
+	}
+
+	ctx := context.Background()
+	existingUser, err := h.userService.GetUserByTelegramID(telegramUserInfo.ID)
+	if err == nil && existingUser != nil {
+		// Existing Telegram user: return JWT for that user
+		if preauthToken != "" && h.rouletteService != nil {
+			if err := h.rouletteService.LinkPreauthTokenToUser(ctx, preauthToken, existingUser.UserID); err != nil {
+				_ = err
+			}
+		}
+
+		tokenPair, err := h.authService.GenerateTokenPair(existingUser.UserID)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate token"})
+		}
+
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"userID":        existingUser.UserID,
+			"access_token":  tokenPair.AccessToken,
+			"refresh_token": tokenPair.RefreshToken,
+			"expires_in":    tokenPair.ExpiresIn,
+		})
+	}
+	if err != nil && !strings.Contains(err.Error(), "not found") {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to check existing user: " + err.Error()})
+	}
+
+	// Get X-SESSION-ID header (mandatory) for new registration
 	sessionID := c.Request().Header.Get("X-SESSION-ID")
 	if sessionID == "" {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "X-SESSION-ID header is required"})
@@ -1083,7 +1115,6 @@ func (h *HTTPHandler) TelegramLogin(c echo.Context) error {
 	}
 
 	// Find user by session_id
-	ctx := context.Background()
 	sessionUser, err := h.userService.GetUserBySessionID(ctx, sessionID)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
@@ -1102,25 +1133,9 @@ func (h *HTTPHandler) TelegramLogin(c echo.Context) error {
 		}
 	}
 
-	// Check if Telegram ID is already registered to a different user
-	existingUser, err := h.userService.GetUserByTelegramID(telegramUserInfo.ID)
-	if err == nil && existingUser != nil {
-		if existingUser.UserID != sessionUser.UserID {
-			return c.JSON(http.StatusConflict, map[string]string{"error": "Telegram account is already registered to another user"})
-		}
-	} else if err != nil && !strings.Contains(err.Error(), "not found") {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to check existing user: " + err.Error()})
-	}
-
 	// Register user with Telegram info
 	if err := h.userService.RegisterUserWithTelegram(ctx, sessionUser.UserID, telegramUserInfo.ID, telegramUserInfo.Username, telegramUserInfo.FirstName, telegramUserInfo.LastName); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
-	}
-
-	// Get optional preauth_token from header or query parameter
-	preauthToken := c.Request().Header.Get("X-Preauth-Token")
-	if preauthToken == "" {
-		preauthToken = c.QueryParam("preauth_token")
 	}
 
 	// Link preauth token to user if provided
