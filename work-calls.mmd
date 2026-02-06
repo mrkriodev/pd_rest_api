@@ -1,3 +1,45 @@
-sequenceDiagram
-%% @backgroundColor(red)
-    Alice->>John: Hello John, how are you?
+flowchart TD
+  Start([Client]) -->|No JWT| PreauthFlow
+  Start -->|Has JWT| JwtFlow
+  Start -->|OAuth Provider| OAuthFlow
+  Start -->|Telegram WebApp| TgWebAppFlow
+
+  PreauthFlow -->|X-SESSION-ID + IP| PreauthToken[Create/Get Preauth Token]
+  PreauthToken --> Spin1[Spin roulette_id=1]
+  Spin1 --> TakePrize1[Take prize]
+  TakePrize1 -->|Links user_uuid if JWT or session user exists| UserLinked1[User linked to preauth token]
+
+  JwtFlow --> AuthStatus[POST /api/auth/status]
+  AuthStatus -->|Valid JWT + userID| Ok200[200 userID]
+  AuthStatus -->|Invalid JWT| Unauthorized401
+  AuthStatus -->|User missing| NotFound404
+
+  JwtFlow --> Refresh[POST /api/auth/refresh]
+  Refresh -->|JWT strict: code in JWT matches userID| NewTokens[New JWTs]
+
+  OAuthFlow -->|Google ID Token| GoogleVerify[GET /api/auth/google/verify]
+  GoogleVerify --> JwtOut1[JWT pair]
+
+  OAuthFlow -->|Google OAuth2 code + X-SESSION-ID| GoogleRegisterOAuth2[POST /api/auth/google/registeroauth2]
+  GoogleRegisterOAuth2 --> LinkSession[Link Google ID to session user] --> JwtOut2[JWT pair + userID]
+
+  OAuthFlow -->|Google OAuth2 redirect| GoogleCallback[GET /api/auth/google/callback or /googlecallback]
+  GoogleCallback -->|code in query/header| GoogleUpsert[Upsert by google_id] --> JwtOut3[JWT pair + userID]
+
+  TgWebAppFlow -->|tgInitData in body| TgWebAppLogin[POST /api/auth/telegram/webapp]
+  TgWebAppLogin --> TgUpsert[Upsert by telegram_id] --> JwtOut4[JWT pair + userID]
+
+  OAuthFlow -->|Telegram Web Login + X-SESSION-ID| TgLogin[POST /api/auth/telegram/login]
+  TgLogin --> LinkSession2[Link telegram_id to session user] --> JwtOut5[JWT pair + userID]
+
+  OAuthFlow -->|Telegram WebApp redirect| TgCallback[GET /api/auth/telegram/callback]
+  TgCallback -->|tgWebAppData| TgExisting[Existing user by telegram_id] --> JwtOut6[JWT pair + userID]
+
+  subgraph RouletteRules[Roulette auth rules]
+    Spin2[POST /api/roulette/spin] -->|roulette_id=1| AuthOptional[Authorization optional]
+    Spin2 -->|roulette_id!=1| AuthRequired[Authorization required]
+    AuthOptional -->|JWT provided| LinkPreauth[Link preauth_token to user]
+    AuthRequired --> LinkPreauth
+    TakePrize2[POST /api/roulette/take-prize] --> AuthOptional2[Authorization optional for id=1]
+    TakePrize2 --> AuthRequired2[Authorization required for id!=1]
+  end
