@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"pdrest/internal/data"
 	"pdrest/internal/domain"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -19,6 +20,7 @@ type RouletteService struct {
 	prizeRepo      data.PrizeRepository
 	prizeValueRepo data.PrizeValueRepository
 	eventRepo      data.EventRepository
+	ratingRepo     data.RatingRepository
 }
 
 type ContextKey string
@@ -29,13 +31,14 @@ const (
 	ContextKeyIPAddress  ContextKey = "ip_address"
 )
 
-func NewRouletteService(r data.RouletteRepository, userRepo data.UserRepository, prizeRepo data.PrizeRepository, prizeValueRepo data.PrizeValueRepository, eventRepo data.EventRepository) *RouletteService {
+func NewRouletteService(r data.RouletteRepository, userRepo data.UserRepository, prizeRepo data.PrizeRepository, prizeValueRepo data.PrizeValueRepository, eventRepo data.EventRepository, ratingRepo data.RatingRepository) *RouletteService {
 	return &RouletteService{
 		repo:           r,
 		userRepo:       userRepo,
 		prizeRepo:      prizeRepo,
 		prizeValueRepo: prizeValueRepo,
 		eventRepo:      eventRepo,
+		ratingRepo:     ratingRepo,
 	}
 }
 
@@ -541,6 +544,21 @@ func (s *RouletteService) TakePrize(ctx context.Context, preauthTokenStr string,
 		}
 	}
 
+	// If prizeValueID is still missing, try to resolve by event_id + prize value
+	if prizeValueID == nil && prizeValue != "" && s.prizeValueRepo != nil {
+		valueInt, parseErr := strconv.ParseInt(prizeValue, 10, 64)
+		if parseErr == nil {
+			pv, err := s.prizeValueRepo.GetPrizeValueByEventIDAndValue(ctx, config.EventID, valueInt)
+			if err == nil && pv != nil {
+				prizeValueID = &pv.ID
+			}
+		}
+	}
+
+	if prizeValueID == nil {
+		return nil, errors.New("prize_value_id is required to record prize")
+	}
+
 	// If still no prize found, determine default prize
 	if prizeValue == "" {
 		var err error
@@ -598,6 +616,19 @@ func (s *RouletteService) TakePrize(ctx context.Context, preauthTokenStr string,
 	if s.prizeRepo != nil {
 		if err := s.prizeRepo.CreatePrize(ctx, prize); err != nil {
 			return nil, fmt.Errorf("failed to create prize record: %w", err)
+		}
+	}
+
+	// Create rating entry for the prize
+	if s.ratingRepo != nil {
+		points, err := strconv.ParseInt(prizeValue, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse prize value for rating: %w", err)
+		}
+		prizeID := prize.ID
+		description := fmt.Sprintf("Prize %d: %d points", prizeID, points)
+		if err := s.ratingRepo.AddPoints(ctx, userID, points, &prizeID, nil, description); err != nil {
+			return nil, fmt.Errorf("failed to add prize points: %w", err)
 		}
 	}
 

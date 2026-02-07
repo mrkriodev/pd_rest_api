@@ -126,9 +126,9 @@ func main() {
 
 		// Create services
 		userService = services.NewUserService(repo)
-		ratingService = services.NewRatingService(ratingRepo, prizeRepo, betRepo)
+		ratingService = services.NewRatingService(ratingRepo)
 		eventService = services.NewEventService(eventRepo)
-		rouletteService = services.NewRouletteService(rouletteRepo, repo, prizeRepo, prizeValueRepo, eventRepo)
+		rouletteService = services.NewRouletteService(rouletteRepo, repo, prizeRepo, prizeValueRepo, eventRepo, ratingRepo)
 		priceProvider := services.NewPriceProvider("") // Uses Binance API by default
 		betScheduler = services.NewBetScheduler(betRepo, priceProvider)
 		betService = services.NewBetService(betRepo, priceProvider, betScheduler)

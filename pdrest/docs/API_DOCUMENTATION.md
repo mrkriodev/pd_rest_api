@@ -414,6 +414,22 @@ Get bet status with current price if timeframe has passed.
 }
 ```
 
+#### POST /api/user/claim_bet
+Claim bet result by bet ID.
+
+**Headers:**
+- `Authorization: Bearer <jwt_token>` (required)
+
+**Query Parameters or Body:**
+- `id` (required) - Bet ID
+
+**Response:**
+```json
+{
+  "status": "claimed"
+}
+```
+
 #### GET /api/getidbysession
 Get user UUID by session_id + IP (derived preauth token).
 

@@ -14,7 +14,7 @@ type RatingRepository interface {
 	GetUserRatingTotals(ctx context.Context, userUUID string) (*domain.RatingTotals, error)
 	GetGlobalRating(ctx context.Context, limit, offset int) ([]domain.GlobalRatingEntry, error)
 	GetFriendsRatings(ctx context.Context, userUUID string, limit, offset int) ([]domain.FriendRatingEntry, error)
-	AddPoints(ctx context.Context, userUUID string, points int64, source domain.RatingSource, description string) error
+	AddPoints(ctx context.Context, userUUID string, points int64, gotPrizeID *int, betID *int, description string) error
 	GetMaxCreatedAt(ctx context.Context, userUUID string) (*int64, error)
 }
 
@@ -30,10 +30,7 @@ func NewPostgresRatingRepository(pool *pgxpool.Pool) *PostgresRatingRepository {
 func (r *PostgresRatingRepository) GetUserRatingTotals(ctx context.Context, userUUID string) (*domain.RatingTotals, error) {
 	query := `
 		SELECT
-			COALESCE(SUM(points) FILTER (WHERE source = 'from_event'), 0)::BIGINT AS from_event_points,
-			COALESCE(SUM(points) FILTER (WHERE source = 'bet_bonus'), 0)::BIGINT AS bet_bonus_points,
-			COALESCE(SUM(points) FILTER (WHERE source = 'promo_bonus'), 0)::BIGINT AS promo_bonus_points,
-			COALESCE(SUM(points) FILTER (WHERE source = 'servivce_bonus'), 0)::BIGINT AS service_bonus_points
+			COALESCE(SUM(points), 0)::BIGINT AS total_points
 		FROM rating
 		WHERE user_uuid = $1
 	`
@@ -42,12 +39,14 @@ func (r *PostgresRatingRepository) GetUserRatingTotals(ctx context.Context, user
 
 	if err := r.pool.QueryRow(ctx, query, userUUID).Scan(
 		&totals.FromEvent,
-		&totals.BetBonus,
-		&totals.PromoBonus,
-		&totals.ServiceBonus,
 	); err != nil {
 		return nil, fmt.Errorf("failed to get user rating totals: %w", err)
 	}
+
+	// Backward-compatible totals: store total points in FromEvent bucket.
+	totals.BetBonus = 0
+	totals.PromoBonus = 0
+	totals.ServiceBonus = 0
 
 	return &totals, nil
 }
@@ -120,17 +119,17 @@ func (r *PostgresRatingRepository) GetFriendsRatings(ctx context.Context, userUU
 	return entries, nil
 }
 
-func (r *PostgresRatingRepository) AddPoints(ctx context.Context, userUUID string, points int64, source domain.RatingSource, description string) error {
-	if points <= 0 {
-		return nil // Don't add zero or negative points
+func (r *PostgresRatingRepository) AddPoints(ctx context.Context, userUUID string, points int64, gotPrizeID *int, betID *int, description string) error {
+	if points == 0 {
+		return nil // Don't add zero points
 	}
 
 	query := `
-		INSERT INTO rating (user_uuid, points, source, description, created_at)
-		VALUES ($1, $2, $3, $4, EXTRACT(EPOCH FROM NOW())::BIGINT * 1000)
+		INSERT INTO rating (user_uuid, points, got_prize_id, bet_id, description, created_at)
+		VALUES ($1, $2, $3, $4, $5, EXTRACT(EPOCH FROM NOW())::BIGINT * 1000)
 	`
 
-	_, err := r.pool.Exec(ctx, query, userUUID, points, source, description)
+	_, err := r.pool.Exec(ctx, query, userUUID, points, gotPrizeID, betID, description)
 	if err != nil {
 		return fmt.Errorf("failed to add points: %w", err)
 	}
@@ -176,7 +175,7 @@ func (r *InMemoryRatingRepository) GetFriendsRatings(ctx context.Context, userUU
 	return []domain.FriendRatingEntry{}, nil
 }
 
-func (r *InMemoryRatingRepository) AddPoints(ctx context.Context, userUUID string, points int64, source domain.RatingSource, description string) error {
+func (r *InMemoryRatingRepository) AddPoints(ctx context.Context, userUUID string, points int64, gotPrizeID *int, betID *int, description string) error {
 	return nil
 }
 

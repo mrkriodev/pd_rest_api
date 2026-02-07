@@ -93,6 +93,7 @@ func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingServi
 	user.GET("/achievements", h.UserAchievements)
 	user.POST("/openbet", h.OpenBet)
 	user.GET("/betstatus", h.BetStatus)
+	user.POST("/claim_bet", h.ClaimBet)
 	user.GET("/unfinished_bets/:uuid", h.UnfinishedBets)
 
 	// Roulette endpoints
@@ -520,6 +521,45 @@ func (h *HTTPHandler) BetStatus(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, response)
+}
+
+func (h *HTTPHandler) ClaimBet(c echo.Context) error {
+	if h.betService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for bets"})
+	}
+
+	// Get user UUID from context (set by JWT middleware)
+	userUUID, ok := c.Get("user_uuid").(string)
+	if !ok || userUUID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	var req struct {
+		BetID int `json:"id" query:"id"`
+	}
+	_ = c.Bind(&req)
+	if req.BetID == 0 {
+		betIDStr := c.QueryParam("id")
+		if betIDStr == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "id is required"})
+		}
+		if _, err := fmt.Sscanf(betIDStr, "%d", &req.BetID); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid bet id"})
+		}
+	}
+
+	ctx := context.Background()
+	if err := h.betService.ClaimBet(ctx, req.BetID, userUUID); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		}
+		if strings.Contains(err.Error(), "not closed") || strings.Contains(err.Error(), "already claimed") {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"status": "claimed"})
 }
 
 func (h *HTTPHandler) UnfinishedBets(c echo.Context) error {

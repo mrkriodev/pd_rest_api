@@ -13,6 +13,7 @@ import (
 type PrizeValueRepository interface {
 	GetPrizeValuesByEventID(ctx context.Context, eventID string) ([]domain.PrizeValue, error)
 	GetPrizeValueByID(ctx context.Context, id int) (*domain.PrizeValue, error)
+	GetPrizeValueByEventIDAndValue(ctx context.Context, eventID string, value int64) (*domain.PrizeValue, error)
 }
 
 // PostgresPrizeValueRepository implements PrizeValueRepository with PostgreSQL
@@ -97,6 +98,36 @@ func (r *PostgresPrizeValueRepository) GetPrizeValueByID(ctx context.Context, id
 	return &pv, nil
 }
 
+func (r *PostgresPrizeValueRepository) GetPrizeValueByEventIDAndValue(ctx context.Context, eventID string, value int64) (*domain.PrizeValue, error) {
+	query := `
+		SELECT id, event_id, value, label, segment_id, created_at, updated_at
+		FROM prize_values
+		WHERE event_id = $1 AND value = $2
+	`
+
+	var pv domain.PrizeValue
+	var segmentID *string
+
+	err := r.pool.QueryRow(ctx, query, eventID, value).Scan(
+		&pv.ID,
+		&pv.EventID,
+		&pv.Value,
+		&pv.Label,
+		&segmentID,
+		&pv.CreatedAt,
+		&pv.UpdatedAt,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get prize value by event and value: %w", err)
+	}
+
+	pv.SegmentID = segmentID
+	return &pv, nil
+}
+
 // InMemoryPrizeValueRepository returns empty results (used when DB is unavailable)
 type InMemoryPrizeValueRepository struct{}
 
@@ -109,5 +140,9 @@ func (r *InMemoryPrizeValueRepository) GetPrizeValuesByEventID(ctx context.Conte
 }
 
 func (r *InMemoryPrizeValueRepository) GetPrizeValueByID(ctx context.Context, id int) (*domain.PrizeValue, error) {
+	return nil, fmt.Errorf("prize value retrieval requires database connection")
+}
+
+func (r *InMemoryPrizeValueRepository) GetPrizeValueByEventIDAndValue(ctx context.Context, eventID string, value int64) (*domain.PrizeValue, error) {
 	return nil, fmt.Errorf("prize value retrieval requires database connection")
 }
