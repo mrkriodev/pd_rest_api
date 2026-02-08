@@ -27,6 +27,21 @@ type UserAchievementStatus struct {
 	ClaimedStatus bool   `json:"claimedStatus"`
 }
 
+type UserAchievementEntry struct {
+	ID            string `json:"id"`
+	Badge         string `json:"badge"`
+	Title         string `json:"title"`
+	ImageURL      string `json:"imageUrl"`
+	Desc          string `json:"desc"`
+	Tags          string `json:"tags"`
+	PrizeID       *int   `json:"prizeId,omitempty"`
+	Steps         int    `json:"steps"`
+	StepDesc      string `json:"stepDesc"`
+	StepsGot      int    `json:"stepsGot"`
+	NeedSteps     int    `json:"needSteps"`
+	ClaimedStatus bool   `json:"claimedStatus"`
+}
+
 // AchievementsResponse represents the response for available achievements.
 type AchievementsResponse struct {
 	Achievements []Achievement `json:"achievements"`
@@ -34,5 +49,5 @@ type AchievementsResponse struct {
 
 // UserAchievementsResponse represents the response for user achievements.
 type UserAchievementsResponse struct {
-	Achievements []Achievement `json:"achievements"`
+	Achievements []UserAchievementEntry `json:"achievements"`
 }

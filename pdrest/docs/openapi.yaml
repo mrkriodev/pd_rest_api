@@ -1394,7 +1394,47 @@ components:
         achievements:
           type: array
           items:
-            $ref: '#/components/schemas/Achievement'
+            $ref: '#/components/schemas/UserAchievement'
+
+    UserAchievement:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique achievement identifier
+        badge:
+          type: string
+          description: Badge name/category
+        title:
+          type: string
+          description: Achievement title
+        imageUrl:
+          type: string
+          description: URL to achievement image/icon
+        desc:
+          type: string
+          description: Achievement description
+        tags:
+          type: string
+          description: Tags for filtering (e.g., "global")
+        prizeId:
+          type: integer
+          description: Prize value id linked to this achievement
+        steps:
+          type: integer
+          description: Number of steps required
+        stepDesc:
+          type: string
+          description: Description of steps required
+        stepsGot:
+          type: integer
+          description: Steps already completed by the user
+        needSteps:
+          type: integer
+          description: Steps required to claim the achievement
+        claimedStatus:
+          type: boolean
+          description: Whether the achievement has been claimed
 
     OpenBetRequest:
       type: object

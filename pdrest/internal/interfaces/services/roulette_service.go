@@ -619,12 +619,26 @@ func (s *RouletteService) TakePrize(ctx context.Context, preauthTokenStr string,
 		}
 	}
 
-	// Create rating entry for the prize
+	// Create rating entry for the prize using prize_value_id
 	if s.ratingRepo != nil {
-		points, err := strconv.ParseInt(prizeValue, 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse prize value for rating: %w", err)
+		var points int64
+		if prizeValueID != nil && s.prizeValueRepo != nil {
+			pv, err := s.prizeValueRepo.GetPrizeValueByID(ctx, *prizeValueID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get prize value for rating: %w", err)
+			}
+			if pv == nil {
+				return nil, errors.New("prize value not found for rating")
+			}
+			points = pv.Value
+		} else {
+			parsedPoints, err := strconv.ParseInt(prizeValue, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse prize value for rating: %w", err)
+			}
+			points = parsedPoints
 		}
+
 		prizeID := prize.ID
 		description := fmt.Sprintf("Prize %d: %d points", prizeID, points)
 		if err := s.ratingRepo.AddPoints(ctx, userID, points, &prizeID, nil, description); err != nil {

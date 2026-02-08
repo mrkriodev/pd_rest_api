@@ -13,7 +13,7 @@ import (
 // AchievementRepository provides access to achievement data.
 type AchievementRepository interface {
 	GetAllAchievements(ctx context.Context) ([]domain.Achievement, error)
-	GetUserAchievements(ctx context.Context, userUUID string) ([]domain.Achievement, error)
+	GetUserAchievements(ctx context.Context, userUUID string) ([]domain.UserAchievementEntry, error)
 	GetAchievementByID(ctx context.Context, achievementID string) (*domain.Achievement, error)
 	GetUserAchievementStatus(ctx context.Context, userUUID string, achievementID string) (*domain.UserAchievementStatus, error)
 	UpdateUserAchievementClaimStatus(ctx context.Context, userUUID string, achievementID string, claimed bool) error
@@ -68,9 +68,10 @@ func (r *PostgresAchievementRepository) GetAllAchievements(ctx context.Context) 
 	return achievements, nil
 }
 
-func (r *PostgresAchievementRepository) GetUserAchievements(ctx context.Context, userUUID string) ([]domain.Achievement, error) {
+func (r *PostgresAchievementRepository) GetUserAchievements(ctx context.Context, userUUID string) ([]domain.UserAchievementEntry, error) {
 	query := `
-		SELECT a.id, a.badge, a.title, a.image_url, a.desc_text, a.tags, a.prize_id, a.steps, a.step_desc
+		SELECT a.id, a.badge, a.title, a.image_url, a.desc_text, a.tags, a.prize_id, a.steps, a.step_desc,
+		       ua.steps_got, ua.need_steps, ua.claimed_status
 		FROM achievements a
 		INNER JOIN user_achievements ua ON a.id = ua.achievement_id
 		WHERE ua.user_uuid = $1
@@ -83,9 +84,9 @@ func (r *PostgresAchievementRepository) GetUserAchievements(ctx context.Context,
 	}
 	defer rows.Close()
 
-	var achievements []domain.Achievement
+	var achievements []domain.UserAchievementEntry
 	for rows.Next() {
-		var achievement domain.Achievement
+		var achievement domain.UserAchievementEntry
 		if err := rows.Scan(
 			&achievement.ID,
 			&achievement.Badge,
@@ -96,6 +97,9 @@ func (r *PostgresAchievementRepository) GetUserAchievements(ctx context.Context,
 			&achievement.PrizeID,
 			&achievement.Steps,
 			&achievement.StepDesc,
+			&achievement.StepsGot,
+			&achievement.NeedSteps,
+			&achievement.ClaimedStatus,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan user achievement: %w", err)
 		}
@@ -201,8 +205,8 @@ func (r *InMemoryAchievementRepository) GetAllAchievements(ctx context.Context) 
 	return []domain.Achievement{}, nil
 }
 
-func (r *InMemoryAchievementRepository) GetUserAchievements(ctx context.Context, userUUID string) ([]domain.Achievement, error) {
-	return []domain.Achievement{}, nil
+func (r *InMemoryAchievementRepository) GetUserAchievements(ctx context.Context, userUUID string) ([]domain.UserAchievementEntry, error) {
+	return []domain.UserAchievementEntry{}, nil
 }
 
 func (r *InMemoryAchievementRepository) GetAchievementByID(ctx context.Context, achievementID string) (*domain.Achievement, error) {
