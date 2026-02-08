@@ -2,9 +2,11 @@ package data
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"pdrest/internal/domain"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -12,6 +14,10 @@ import (
 type AchievementRepository interface {
 	GetAllAchievements(ctx context.Context) ([]domain.Achievement, error)
 	GetUserAchievements(ctx context.Context, userUUID string) ([]domain.Achievement, error)
+	GetAchievementByID(ctx context.Context, achievementID string) (*domain.Achievement, error)
+	GetUserAchievementStatus(ctx context.Context, userUUID string, achievementID string) (*domain.UserAchievementStatus, error)
+	UpdateUserAchievementClaimStatus(ctx context.Context, userUUID string, achievementID string, claimed bool) error
+	UpdateUserAchievementNeedSteps(ctx context.Context, userUUID string, achievementID string, needSteps int) error
 }
 
 // PostgresAchievementRepository implements AchievementRepository with PostgreSQL.
@@ -25,7 +31,7 @@ func NewPostgresAchievementRepository(pool *pgxpool.Pool) *PostgresAchievementRe
 
 func (r *PostgresAchievementRepository) GetAllAchievements(ctx context.Context) ([]domain.Achievement, error) {
 	query := `
-		SELECT id, badge, title, image_url, desc_text, tags, summ, steps, step_desc
+		SELECT id, badge, title, image_url, desc_text, tags, prize_id, steps, step_desc
 		FROM achievements
 		ORDER BY id ASC
 	`
@@ -46,7 +52,7 @@ func (r *PostgresAchievementRepository) GetAllAchievements(ctx context.Context) 
 			&achievement.ImageURL,
 			&achievement.Desc,
 			&achievement.Tags,
-			&achievement.Summ,
+			&achievement.PrizeID,
 			&achievement.Steps,
 			&achievement.StepDesc,
 		); err != nil {
@@ -64,7 +70,7 @@ func (r *PostgresAchievementRepository) GetAllAchievements(ctx context.Context) 
 
 func (r *PostgresAchievementRepository) GetUserAchievements(ctx context.Context, userUUID string) ([]domain.Achievement, error) {
 	query := `
-		SELECT a.id, a.badge, a.title, a.image_url, a.desc_text, a.tags, a.summ, a.steps, a.step_desc
+		SELECT a.id, a.badge, a.title, a.image_url, a.desc_text, a.tags, a.prize_id, a.steps, a.step_desc
 		FROM achievements a
 		INNER JOIN user_achievements ua ON a.id = ua.achievement_id
 		WHERE ua.user_uuid = $1
@@ -87,7 +93,7 @@ func (r *PostgresAchievementRepository) GetUserAchievements(ctx context.Context,
 			&achievement.ImageURL,
 			&achievement.Desc,
 			&achievement.Tags,
-			&achievement.Summ,
+			&achievement.PrizeID,
 			&achievement.Steps,
 			&achievement.StepDesc,
 		); err != nil {
@@ -103,6 +109,87 @@ func (r *PostgresAchievementRepository) GetUserAchievements(ctx context.Context,
 	return achievements, nil
 }
 
+func (r *PostgresAchievementRepository) GetAchievementByID(ctx context.Context, achievementID string) (*domain.Achievement, error) {
+	query := `
+		SELECT id, badge, title, image_url, desc_text, tags, prize_id, steps, step_desc
+		FROM achievements
+		WHERE id = $1
+	`
+
+	var achievement domain.Achievement
+	if err := r.pool.QueryRow(ctx, query, achievementID).Scan(
+		&achievement.ID,
+		&achievement.Badge,
+		&achievement.Title,
+		&achievement.ImageURL,
+		&achievement.Desc,
+		&achievement.Tags,
+		&achievement.PrizeID,
+		&achievement.Steps,
+		&achievement.StepDesc,
+	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("achievement not found")
+		}
+		return nil, fmt.Errorf("failed to get achievement: %w", err)
+	}
+
+	return &achievement, nil
+}
+
+func (r *PostgresAchievementRepository) GetUserAchievementStatus(ctx context.Context, userUUID string, achievementID string) (*domain.UserAchievementStatus, error) {
+	query := `
+		SELECT user_uuid::text, achievement_id, steps_got, need_steps, claimed_status
+		FROM user_achievements
+		WHERE user_uuid = $1 AND achievement_id = $2
+	`
+
+	var status domain.UserAchievementStatus
+	if err := r.pool.QueryRow(ctx, query, userUUID, achievementID).Scan(
+		&status.UserID,
+		&status.AchievementID,
+		&status.StepsGot,
+		&status.NeedSteps,
+		&status.ClaimedStatus,
+	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("user achievement not found")
+		}
+		return nil, fmt.Errorf("failed to get user achievement: %w", err)
+	}
+
+	return &status, nil
+}
+
+func (r *PostgresAchievementRepository) UpdateUserAchievementClaimStatus(ctx context.Context, userUUID string, achievementID string, claimed bool) error {
+	query := `
+		UPDATE user_achievements
+		SET claimed_status = $1
+		WHERE user_uuid = $2 AND achievement_id = $3
+	`
+
+	_, err := r.pool.Exec(ctx, query, claimed, userUUID, achievementID)
+	if err != nil {
+		return fmt.Errorf("failed to update claimed_status: %w", err)
+	}
+	return nil
+}
+
+func (r *PostgresAchievementRepository) UpdateUserAchievementNeedSteps(ctx context.Context, userUUID string, achievementID string, needSteps int) error {
+	query := `
+		UPDATE user_achievements
+		SET need_steps = $1
+		WHERE user_uuid = $2 AND achievement_id = $3
+		  AND (need_steps IS NULL OR need_steps = 0)
+	`
+
+	_, err := r.pool.Exec(ctx, query, needSteps, userUUID, achievementID)
+	if err != nil {
+		return fmt.Errorf("failed to update need_steps: %w", err)
+	}
+	return nil
+}
+
 // InMemoryAchievementRepository returns empty results (used when DB is unavailable).
 type InMemoryAchievementRepository struct{}
 
@@ -116,4 +203,20 @@ func (r *InMemoryAchievementRepository) GetAllAchievements(ctx context.Context) 
 
 func (r *InMemoryAchievementRepository) GetUserAchievements(ctx context.Context, userUUID string) ([]domain.Achievement, error) {
 	return []domain.Achievement{}, nil
+}
+
+func (r *InMemoryAchievementRepository) GetAchievementByID(ctx context.Context, achievementID string) (*domain.Achievement, error) {
+	return nil, fmt.Errorf("achievement retrieval requires database connection")
+}
+
+func (r *InMemoryAchievementRepository) GetUserAchievementStatus(ctx context.Context, userUUID string, achievementID string) (*domain.UserAchievementStatus, error) {
+	return nil, fmt.Errorf("user achievement retrieval requires database connection")
+}
+
+func (r *InMemoryAchievementRepository) UpdateUserAchievementClaimStatus(ctx context.Context, userUUID string, achievementID string, claimed bool) error {
+	return fmt.Errorf("user achievement update requires database connection")
+}
+
+func (r *InMemoryAchievementRepository) UpdateUserAchievementNeedSteps(ctx context.Context, userUUID string, achievementID string, needSteps int) error {
+	return fmt.Errorf("user achievement update requires database connection")
 }

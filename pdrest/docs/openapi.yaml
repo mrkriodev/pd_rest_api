@@ -804,6 +804,33 @@ paths:
       responses:
         '200':
           description: User achievements
+
+  /user/claim_achivement:
+    post:
+      summary: Claim completed achievement
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - achievementId
+              properties:
+                achievementId:
+                  type: string
+                  description: Achievement id to claim
+      responses:
+        '200':
+          description: Achievement claimed
+        '400':
+          description: Achievement not completed or already claimed
+        '401':
+          description: Unauthorized
+        '404':
+          description: Achievement not found
           content:
             application/json:
               schema:
@@ -1343,10 +1370,9 @@ components:
         tags:
           type: string
           description: Tags for filtering (e.g., "global")
-        summ:
-          type: number
-          format: double
-          description: Reward sum/amount
+        prizeId:
+          type: integer
+          description: Prize value id linked to this achievement
         steps:
           type: integer
           description: Number of steps required

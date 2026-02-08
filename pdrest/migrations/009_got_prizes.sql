@@ -7,8 +7,8 @@ CREATE TABLE IF NOT EXISTS got_prizes (
     user_uuid UUID NOT NULL,                 -- Reference to users table
     preauth_token_id INTEGER,                -- Reference to roulette_preauth_token (optional)
     roulette_id INTEGER,                     -- Reference to roulette table (optional, for tracking)
-    prize_value_id INTEGER,                  -- Reference to prize_values table (optional)
-    prize_value TEXT NOT NULL,               -- Prize description/value
+    prize_value_id INTEGER NOT NULL,                  -- Reference to prize_values table (optional)
+    prize_value TEXT,               -- Prize description/value
     prize_type VARCHAR(50) NOT NULL,         -- Type: 'roulette_on_start', 'roulette_during_event', 'event_reward', etc.
     awarded_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT * 1000,
     created_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT * 1000,
@@ -30,13 +30,13 @@ CREATE TABLE IF NOT EXISTS got_prizes (
 -- CREATE INDEX IF NOT EXISTS idx_got_prizes_prize_value_id ON got_prizes(prize_value_id);
 
 -- Comments for documentation
--- COMMENT ON TABLE got_prizes IS 'Stores prizes already received by users via roulette or events';
--- COMMENT ON COLUMN got_prizes.event_id IS 'Event ID if prize is event-related (NULL for on_start roulette)';
--- COMMENT ON COLUMN got_prizes.user_uuid IS 'User UUID of the prize owner';
--- COMMENT ON COLUMN got_prizes.preauth_token_id IS 'Preauth token ID if prize was awarded preauth';
--- COMMENT ON COLUMN got_prizes.roulette_id IS 'Reference to roulette table for tracking which roulette session awarded the prize';
--- COMMENT ON COLUMN got_prizes.prize_value_id IS 'Reference to prize_values table for the prize value won';
--- COMMENT ON COLUMN got_prizes.prize_value IS 'Prize description/value (e.g., "100 USDT", "100 points")';
--- COMMENT ON COLUMN got_prizes.prize_type IS 'Type of prize: roulette_on_start, roulette_during_event, event_reward, etc.';
--- COMMENT ON COLUMN got_prizes.awarded_at IS 'Timestamp when prize was awarded (milliseconds)';
+COMMENT ON TABLE got_prizes IS 'Stores prizes already received by users via roulette or events';
+COMMENT ON COLUMN got_prizes.event_id IS 'Event ID if prize is event-related (NULL for on_start roulette)';
+COMMENT ON COLUMN got_prizes.user_uuid IS 'User UUID of the prize owner';
+COMMENT ON COLUMN got_prizes.preauth_token_id IS 'Preauth token ID if prize was awarded preauth';
+COMMENT ON COLUMN got_prizes.roulette_id IS 'Reference to roulette table for tracking which roulette session awarded the prize';
+COMMENT ON COLUMN got_prizes.prize_value_id IS 'Reference to prize_values table for the prize value won';
+COMMENT ON COLUMN got_prizes.prize_value IS 'Prize description/value (e.g., "100 USDT", "100 points")';
+COMMENT ON COLUMN got_prizes.prize_type IS 'Type of prize: roulette_on_start, roulette_during_event, event_reward, etc.';
+COMMENT ON COLUMN got_prizes.awarded_at IS 'Timestamp when prize was awarded (milliseconds)';
 

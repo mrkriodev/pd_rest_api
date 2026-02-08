@@ -28,6 +28,36 @@ Health check endpoint.
 
 ---
 
+### Achievements
+
+#### GET /api/available_achievements
+Get list of available achievements.
+
+#### GET /api/user/achievements
+Get achievements earned by the authenticated user (requires JWT).
+
+#### POST /api/user/claim_achivement
+Claim a completed achievement and receive its prize (requires JWT).
+
+**Request Body:**
+```json
+{
+  "achievementId": "first_bet_success"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "claimed",
+  "got_prize_id": 123,
+  "prize_value": "10 USDT",
+  "achievementId": "first_bet_success"
+}
+```
+
+---
+
 ### Events
 
 #### GET /api/available_events

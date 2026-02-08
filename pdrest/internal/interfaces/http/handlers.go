@@ -91,6 +91,7 @@ func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingServi
 	user.GET("/referral_link", h.UserReferralLink)
 	user.GET("/friends_ratings", h.UserFriendsRatings)
 	user.GET("/achievements", h.UserAchievements)
+	user.POST("/claim_achivement", h.ClaimAchievement)
 	user.POST("/openbet", h.OpenBet)
 	user.GET("/betstatus", h.BetStatus)
 	user.POST("/claim_bet", h.ClaimBet)
@@ -1329,6 +1330,48 @@ func (h *HTTPHandler) UserAchievements(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, result)
+}
+
+func (h *HTTPHandler) ClaimAchievement(c echo.Context) error {
+	if h.achievementService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for achievements"})
+	}
+
+	// Get user UUID from context (set by JWT middleware)
+	userUUID, ok := c.Get("user_uuid").(string)
+	if !ok || userUUID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	var req struct {
+		AchievementID string `json:"achievementId" query:"achievementId"`
+	}
+	_ = c.Bind(&req)
+	if req.AchievementID == "" {
+		req.AchievementID = c.QueryParam("achievementId")
+	}
+	if req.AchievementID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "achievementId is required"})
+	}
+
+	ctx := context.Background()
+	prize, err := h.achievementService.ClaimAchievement(ctx, userUUID, req.AchievementID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		}
+		if strings.Contains(err.Error(), "not completed") || strings.Contains(err.Error(), "already claimed") || strings.Contains(err.Error(), "no prize") {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"status":        "claimed",
+		"got_prize_id":  prize.ID,
+		"prize_value":   prize.PrizeValue,
+		"achievementId": req.AchievementID,
+	})
 }
 
 // GetRouletteStatus gets the current status of roulette

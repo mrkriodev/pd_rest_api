@@ -132,7 +132,7 @@ func main() {
 		priceProvider := services.NewPriceProvider("") // Uses Binance API by default
 		betScheduler = services.NewBetScheduler(betRepo, priceProvider)
 		betService = services.NewBetService(betRepo, priceProvider, betScheduler)
-		achievementService = services.NewAchievementService(achievementRepo)
+		achievementService = services.NewAchievementService(achievementRepo, prizeRepo, prizeValueRepo, ratingRepo)
 	}
 
 	// Register HTTP handlers (eventService, rouletteService, betService, and achievementService may be nil if database unavailable)
