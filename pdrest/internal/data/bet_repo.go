@@ -16,6 +16,7 @@ type BetRepository interface {
 	UpdateBetClosePrice(ctx context.Context, betID int, closePrice float64, closeTime time.Time) error
 	UpdateBetClaimStatus(ctx context.Context, betID int, userUUID string, claimed bool) error
 	GetWinningBetsByUser(ctx context.Context, userUUID string) ([]domain.Bet, error)
+	HasWinningBet(ctx context.Context, userUUID string) (bool, error)
 	GetClosedBetsByUser(ctx context.Context, userUUID string) ([]domain.Bet, error)
 	GetUnfinishedBetsByUser(ctx context.Context, userUUID string) ([]domain.Bet, error)
 }
@@ -198,6 +199,28 @@ func (r *PostgresBetRepository) GetWinningBetsByUser(ctx context.Context, userUU
 	return bets, nil
 }
 
+func (r *PostgresBetRepository) HasWinningBet(ctx context.Context, userUUID string) (bool, error) {
+	query := `
+		SELECT EXISTS (
+			SELECT 1
+			FROM bets
+			WHERE user_uuid = $1 
+			  AND close_price IS NOT NULL
+			  AND (
+				(side = 'pump' AND close_price > open_price) OR
+				(side = 'dump' AND close_price < open_price)
+			  )
+		)
+	`
+
+	var exists bool
+	if err := r.pool.QueryRow(ctx, query, userUUID).Scan(&exists); err != nil {
+		return false, fmt.Errorf("failed to check winning bets: %w", err)
+	}
+
+	return exists, nil
+}
+
 func (r *PostgresBetRepository) GetClosedBetsByUser(ctx context.Context, userUUID string) ([]domain.Bet, error) {
 	query := `
 		SELECT id, user_uuid, side, sum, pair, timeframe, open_price, close_price, open_time, close_time, claimed_status, created_at, updated_at
@@ -327,6 +350,10 @@ func (r *InMemoryBetRepository) UpdateBetClaimStatus(ctx context.Context, betID 
 
 func (r *InMemoryBetRepository) GetWinningBetsByUser(ctx context.Context, userUUID string) ([]domain.Bet, error) {
 	return []domain.Bet{}, nil
+}
+
+func (r *InMemoryBetRepository) HasWinningBet(ctx context.Context, userUUID string) (bool, error) {
+	return false, nil
 }
 
 func (r *InMemoryBetRepository) GetClosedBetsByUser(ctx context.Context, userUUID string) ([]domain.Bet, error) {

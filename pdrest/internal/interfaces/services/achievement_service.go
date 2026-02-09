@@ -15,14 +15,16 @@ type AchievementService struct {
 	prizeRepo      data.PrizeRepository
 	prizeValueRepo data.PrizeValueRepository
 	ratingRepo     data.RatingRepository
+	betRepo        data.BetRepository
 }
 
-func NewAchievementService(r data.AchievementRepository, prizeRepo data.PrizeRepository, prizeValueRepo data.PrizeValueRepository, ratingRepo data.RatingRepository) *AchievementService {
+func NewAchievementService(r data.AchievementRepository, prizeRepo data.PrizeRepository, prizeValueRepo data.PrizeValueRepository, ratingRepo data.RatingRepository, betRepo data.BetRepository) *AchievementService {
 	return &AchievementService{
 		repo:           r,
 		prizeRepo:      prizeRepo,
 		prizeValueRepo: prizeValueRepo,
 		ratingRepo:     ratingRepo,
+		betRepo:        betRepo,
 	}
 }
 
@@ -58,6 +60,49 @@ func (s *AchievementService) GetUserAchievements(ctx context.Context, userUUID s
 	return &domain.UserAchievementsResponse{
 		Achievements: achievements,
 	}, nil
+}
+
+func (s *AchievementService) UpdateAchievementStatus(ctx context.Context, userUUID string, achievementID string) (string, error) {
+	if userUUID == "" {
+		return "", errors.New("user uuid is required")
+	}
+	if achievementID == "" {
+		return "", errors.New("achievement_id is required")
+	}
+	if s.repo == nil || s.betRepo == nil {
+		return "", errors.New("achievement service dependencies are not configured")
+	}
+
+	switch achievementID {
+	case "first_bet_success":
+		hasWin, err := s.betRepo.HasWinningBet(ctx, userUUID)
+		if err != nil {
+			return "", err
+		}
+		if !hasWin {
+			return "not_completed", nil
+		}
+
+		achievement, err := s.repo.GetAchievementByID(ctx, achievementID)
+		if err != nil {
+			return "", err
+		}
+		needSteps := achievement.Steps
+		if needSteps <= 0 {
+			needSteps = 1
+		}
+
+		created, err := s.repo.AddUserAchievement(ctx, userUUID, achievementID, needSteps, needSteps)
+		if err != nil {
+			return "", err
+		}
+		if !created {
+			return "already_exists", nil
+		}
+		return "created", nil
+	default:
+		return "", errors.New("unsupported achievement id")
+	}
 }
 
 func (s *AchievementService) ClaimAchievement(ctx context.Context, userUUID string, achievementID string) (*domain.Prize, error) {

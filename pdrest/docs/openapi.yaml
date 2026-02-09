@@ -805,6 +805,25 @@ paths:
         '200':
           description: User achievements
 
+  /user/events:
+    get:
+      summary: Get user events (joined and available competitions)
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User events
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserEventsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
   /user/claim_achivement:
     post:
       summary: Claim completed achievement
@@ -835,6 +854,165 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserAchievementsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /user/update_achivement_satus:
+    post:
+      summary: Update achievement status based on server rules
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - achievementId
+              properties:
+                achievementId:
+                  type: string
+                  description: Achievement id to update
+      responses:
+        '200':
+          description: Achievement status updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    description: created | already_exists | not_completed
+                  achievementId:
+                    type: string
+        '400':
+          description: Invalid request
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /user/take_part_on_event:
+    post:
+      summary: Take part in an event
+      tags:
+        - User
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - eventId
+              properties:
+                eventId:
+                  type: string
+                  description: Event id to join
+      responses:
+        '200':
+          description: Event participation updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    description: created | already_exists
+                  eventId:
+                    type: string
+        '400':
+          description: Invalid request
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /user/update_prise_status:
+    post:
+      summary: Update event prize status for user
+      tags:
+        - User
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - eventId
+              properties:
+                eventId:
+                  type: string
+                  description: Event id to update
+      responses:
+        '200':
+          description: Event prize status updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    description: updated | already_defined
+                  eventId:
+                    type: string
+        '400':
+          description: Invalid request
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /user/take_event_prize:
+    post:
+      summary: Take event prize
+      tags:
+        - User
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - eventId
+              properties:
+                eventId:
+                  type: string
+                  description: Event id to claim prize for
+      responses:
+        '200':
+          description: Prize claimed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  got_prize_id:
+                    type: integer
+                  prize_value:
+                    type: string
+                  prize_value_id:
+                    type: integer
+                  eventId:
+                    type: string
+        '400':
+          description: Invalid request or prize unavailable
         '401':
           $ref: '#/components/responses/Unauthorized'
         '503':
@@ -1395,6 +1573,51 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/UserAchievement'
+
+    UserEventsResponse:
+      type: object
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserEvent'
+
+    UserEvent:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Event identifier
+        badge:
+          type: string
+        title:
+          type: string
+        desc:
+          type: string
+        deadline:
+          type: string
+          format: date-time
+        tags:
+          type: string
+        reward:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reward'
+        info:
+          type: string
+        status:
+          type: string
+          description: joined | available
+        joinedAt:
+          type: string
+          format: date-time
+        hasPriseStatus:
+          type: boolean
+          nullable: true
+          description: NULL means unknown prize status
+        prizeTakenStatus:
+          type: boolean
+          description: Whether the prize was already taken
 
     UserAchievement:
       type: object

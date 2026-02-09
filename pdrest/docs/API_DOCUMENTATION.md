@@ -33,6 +33,25 @@ Health check endpoint.
 #### GET /api/available_achievements
 Get list of available achievements.
 
+**Response:**
+```json
+{
+  "achievements": [
+    {
+      "id": "first_bet_success",
+      "badge": "First Bet",
+      "title": "First Successful Bet",
+      "imageUrl": "https://mrkriodev.github.io/mrkrio.github.io/data/1-bet-ach.svg",
+      "desc": "Awarded for the first successful bet.",
+      "tags": "bet",
+      "prizeId": 1,
+      "steps": 1,
+      "stepDesc": "Win your first bet"
+    }
+  ]
+}
+```
+
 #### GET /api/user/achievements
 Get achievements earned by the authenticated user (requires JWT).
 
@@ -58,6 +77,72 @@ Get achievements earned by the authenticated user (requires JWT).
 }
 ```
 
+If an achievement has no row in `user_achievements`, its `desc` will be an empty string.
+
+#### GET /api/user/events
+Get user events plus available competitions (requires JWT).
+
+**Response:**
+```json
+{
+  "events": [
+    {
+      "id": "event_id",
+      "badge": "Event badge",
+      "title": "Event title",
+      "desc": "Event description",
+      "deadline": "2025-12-01T12:00:00Z",
+      "tags": "competition",
+      "reward": [...],
+      "info": "Additional info",
+      "status": "joined",
+      "joinedAt": "2025-01-01T12:00:00Z",
+      "hasPriseStatus": null,
+      "prizeTakenStatus": false
+    }
+  ]
+}
+```
+
+#### POST /api/user/update_prise_status
+Update event prize status for user (requires JWT).
+
+**Request Body:**
+```json
+{
+  "eventId": "event_id"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "updated",
+  "eventId": "event_id"
+}
+```
+
+#### POST /api/user/take_event_prize
+Take event prize (requires JWT).
+
+**Request Body:**
+```json
+{
+  "eventId": "event_id"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "claimed",
+  "got_prize_id": 123,
+  "prize_value": "100 USDT",
+  "prize_value_id": 10,
+  "eventId": "event_id"
+}
+```
+
 #### POST /api/user/claim_achivement
 Claim a completed achievement and receive its prize (requires JWT).
 
@@ -75,6 +160,42 @@ Claim a completed achievement and receive its prize (requires JWT).
   "got_prize_id": 123,
   "prize_value": "10 USDT",
   "achievementId": "first_bet_success"
+}
+```
+
+#### POST /api/user/update_achivement_satus
+Update achievement status based on server rules (requires JWT).
+
+**Request Body:**
+```json
+{
+  "achievementId": "first_bet_success"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "created",
+  "achievementId": "first_bet_success"
+}
+```
+
+#### POST /api/user/take_part_on_event
+Take part in an event (requires JWT).
+
+**Request Body:**
+```json
+{
+  "eventId": "event_id"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "created",
+  "eventId": "event_id"
 }
 ```
 

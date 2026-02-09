@@ -16,6 +16,7 @@ type AchievementRepository interface {
 	GetUserAchievements(ctx context.Context, userUUID string) ([]domain.UserAchievementEntry, error)
 	GetAchievementByID(ctx context.Context, achievementID string) (*domain.Achievement, error)
 	GetUserAchievementStatus(ctx context.Context, userUUID string, achievementID string) (*domain.UserAchievementStatus, error)
+	AddUserAchievement(ctx context.Context, userUUID string, achievementID string, stepsGot int, needSteps int) (bool, error)
 	UpdateUserAchievementClaimStatus(ctx context.Context, userUUID string, achievementID string, claimed bool) error
 	UpdateUserAchievementNeedSteps(ctx context.Context, userUUID string, achievementID string, needSteps int) error
 }
@@ -70,12 +71,29 @@ func (r *PostgresAchievementRepository) GetAllAchievements(ctx context.Context) 
 
 func (r *PostgresAchievementRepository) GetUserAchievements(ctx context.Context, userUUID string) ([]domain.UserAchievementEntry, error) {
 	query := `
-		SELECT a.id, a.badge, a.title, a.image_url, a.desc_text, a.tags, a.prize_id, a.steps, a.step_desc,
-		       ua.steps_got, ua.need_steps, ua.claimed_status
+		SELECT a.id, a.badge, a.title, a.image_url,
+		       CASE WHEN ua.achievement_id IS NULL THEN '' ELSE a.desc_text END AS desc_text,
+		       a.tags, a.prize_id, a.steps, a.step_desc,
+		       COALESCE(ua.steps_got, 0) AS steps_got,
+		       COALESCE(ua.need_steps, 0) AS need_steps,
+		       COALESCE(ua.claimed_status, FALSE) AS claimed_status
 		FROM achievements a
-		INNER JOIN user_achievements ua ON a.id = ua.achievement_id
-		WHERE ua.user_uuid = $1
-		ORDER BY ua.earned_at DESC
+		LEFT JOIN user_achievements ua
+		       ON a.id = ua.achievement_id AND ua.user_uuid = $1
+		ORDER BY
+			CASE
+				WHEN ua.achievement_id IS NOT NULL
+					AND COALESCE(ua.claimed_status, FALSE) = FALSE
+					AND COALESCE(NULLIF(ua.need_steps, 0), a.steps) > 0
+					AND COALESCE(ua.steps_got, 0) >= COALESCE(NULLIF(ua.need_steps, 0), a.steps)
+				THEN 0
+				WHEN ua.achievement_id IS NOT NULL
+					AND COALESCE(NULLIF(ua.need_steps, 0), a.steps) > 0
+					AND COALESCE(ua.steps_got, 0) < COALESCE(NULLIF(ua.need_steps, 0), a.steps)
+				THEN 1
+				ELSE 2
+			END,
+			a.id ASC
 	`
 
 	rows, err := r.pool.Query(ctx, query, userUUID)
@@ -165,6 +183,21 @@ func (r *PostgresAchievementRepository) GetUserAchievementStatus(ctx context.Con
 	return &status, nil
 }
 
+func (r *PostgresAchievementRepository) AddUserAchievement(ctx context.Context, userUUID string, achievementID string, stepsGot int, needSteps int) (bool, error) {
+	query := `
+		INSERT INTO user_achievements (user_uuid, achievement_id, steps_got, need_steps, claimed_status)
+		VALUES ($1, $2, $3, $4, FALSE)
+		ON CONFLICT (user_uuid, achievement_id) DO NOTHING
+	`
+
+	result, err := r.pool.Exec(ctx, query, userUUID, achievementID, stepsGot, needSteps)
+	if err != nil {
+		return false, fmt.Errorf("failed to insert user achievement: %w", err)
+	}
+
+	return result.RowsAffected() > 0, nil
+}
+
 func (r *PostgresAchievementRepository) UpdateUserAchievementClaimStatus(ctx context.Context, userUUID string, achievementID string, claimed bool) error {
 	query := `
 		UPDATE user_achievements
@@ -215,6 +248,10 @@ func (r *InMemoryAchievementRepository) GetAchievementByID(ctx context.Context, 
 
 func (r *InMemoryAchievementRepository) GetUserAchievementStatus(ctx context.Context, userUUID string, achievementID string) (*domain.UserAchievementStatus, error) {
 	return nil, fmt.Errorf("user achievement retrieval requires database connection")
+}
+
+func (r *InMemoryAchievementRepository) AddUserAchievement(ctx context.Context, userUUID string, achievementID string, stepsGot int, needSteps int) (bool, error) {
+	return false, fmt.Errorf("user achievement insert requires database connection")
 }
 
 func (r *InMemoryAchievementRepository) UpdateUserAchievementClaimStatus(ctx context.Context, userUUID string, achievementID string, claimed bool) error {

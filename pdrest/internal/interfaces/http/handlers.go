@@ -91,7 +91,12 @@ func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingServi
 	user.GET("/referral_link", h.UserReferralLink)
 	user.GET("/friends_ratings", h.UserFriendsRatings)
 	user.GET("/achievements", h.UserAchievements)
+	user.GET("/events", h.UserEvents)
 	user.POST("/claim_achivement", h.ClaimAchievement)
+	user.POST("/update_achivement_satus", h.UpdateAchievementStatus)
+	user.POST("/take_part_on_event", h.TakePartOnEvent)
+	user.POST("/update_prise_status", h.UpdateUserEventPrizeStatus)
+	user.POST("/take_event_prize", h.TakeEventPrize)
 	user.POST("/openbet", h.OpenBet)
 	user.GET("/betstatus", h.BetStatus)
 	user.POST("/claim_bet", h.ClaimBet)
@@ -1288,7 +1293,8 @@ func (h *HTTPHandler) AvailableEvents(c echo.Context) error {
 	}
 
 	ctx := context.Background()
-	events, err := h.eventService.GetAvailableEvents(ctx)
+	tag := "competition"
+	events, err := h.eventService.GetAvailableEvents(ctx, tag)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -1325,6 +1331,26 @@ func (h *HTTPHandler) UserAchievements(c echo.Context) error {
 
 	ctx := context.Background()
 	result, err := h.achievementService.GetUserAchievements(ctx, userUUID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, result)
+}
+
+func (h *HTTPHandler) UserEvents(c echo.Context) error {
+	if h.eventService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for events"})
+	}
+
+	// Get user UUID from context (set by JWT middleware)
+	userUUID, ok := c.Get("user_uuid").(string)
+	if !ok || userUUID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	ctx := context.Background()
+	result, err := h.eventService.GetUserEvents(ctx, userUUID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
@@ -1371,6 +1397,157 @@ func (h *HTTPHandler) ClaimAchievement(c echo.Context) error {
 		"got_prize_id":  prize.ID,
 		"prize_value":   prize.PrizeValue,
 		"achievementId": req.AchievementID,
+	})
+}
+
+func (h *HTTPHandler) UpdateAchievementStatus(c echo.Context) error {
+	if h.achievementService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for achievements"})
+	}
+
+	// Get user UUID from context (set by JWT middleware)
+	userUUID, ok := c.Get("user_uuid").(string)
+	if !ok || userUUID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	var req struct {
+		AchievementID string `json:"achievementId" query:"achievementId"`
+	}
+	_ = c.Bind(&req)
+	if req.AchievementID == "" {
+		req.AchievementID = c.QueryParam("achievementId")
+	}
+	if req.AchievementID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "achievementId is required"})
+	}
+
+	ctx := context.Background()
+	status, err := h.achievementService.UpdateAchievementStatus(ctx, userUUID, req.AchievementID)
+	if err != nil {
+		if strings.Contains(err.Error(), "required") || strings.Contains(err.Error(), "unsupported") {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"status":        status,
+		"achievementId": req.AchievementID,
+	})
+}
+
+func (h *HTTPHandler) TakePartOnEvent(c echo.Context) error {
+	if h.eventService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for events"})
+	}
+
+	// Get user UUID from context (set by JWT middleware)
+	userUUID, ok := c.Get("user_uuid").(string)
+	if !ok || userUUID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	var req struct {
+		EventID string `json:"eventId" query:"eventId"`
+	}
+	_ = c.Bind(&req)
+	if req.EventID == "" {
+		req.EventID = c.QueryParam("eventId")
+	}
+	if req.EventID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "eventId is required"})
+	}
+
+	ctx := context.Background()
+	status, err := h.eventService.TakePartOnEvent(ctx, userUUID, req.EventID)
+	if err != nil {
+		if strings.Contains(err.Error(), "required") || strings.Contains(err.Error(), "not found") {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"status":  status,
+		"eventId": req.EventID,
+	})
+}
+
+func (h *HTTPHandler) UpdateUserEventPrizeStatus(c echo.Context) error {
+	if h.eventService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for events"})
+	}
+
+	// Get user UUID from context (set by JWT middleware)
+	userUUID, ok := c.Get("user_uuid").(string)
+	if !ok || userUUID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	var req struct {
+		EventID string `json:"eventId" query:"eventId"`
+	}
+	_ = c.Bind(&req)
+	if req.EventID == "" {
+		req.EventID = c.QueryParam("eventId")
+	}
+	if req.EventID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "eventId is required"})
+	}
+
+	ctx := context.Background()
+	status, err := h.eventService.UpdateUserEventPrizeStatus(ctx, userUUID, req.EventID)
+	if err != nil {
+		if strings.Contains(err.Error(), "required") || strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "unsupported") {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"status":  status,
+		"eventId": req.EventID,
+	})
+}
+
+func (h *HTTPHandler) TakeEventPrize(c echo.Context) error {
+	if h.eventService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for events"})
+	}
+
+	// Get user UUID from context (set by JWT middleware)
+	userUUID, ok := c.Get("user_uuid").(string)
+	if !ok || userUUID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	var req struct {
+		EventID string `json:"eventId" query:"eventId"`
+	}
+	_ = c.Bind(&req)
+	if req.EventID == "" {
+		req.EventID = c.QueryParam("eventId")
+	}
+	if req.EventID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "eventId is required"})
+	}
+
+	ctx := context.Background()
+	prize, err := h.eventService.TakeEventPrize(ctx, userUUID, req.EventID)
+	if err != nil {
+		if strings.Contains(err.Error(), "required") || strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "prize") {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"status":         "claimed",
+		"got_prize_id":   prize.ID,
+		"prize_value":    prize.PrizeValue,
+		"eventId":        req.EventID,
+		"prize_value_id": prize.PrizeValueID,
 	})
 }
 
