@@ -72,12 +72,24 @@ Get achievements earned by the authenticated user (requires JWT).
       "stepsGot": 1,
       "needSteps": 1,
       "claimedStatus": false
+    },
+    {
+      "id": "test_achive",
+      "badge": "Test",
+      "title": "Test Achievement",
+      "imageUrl": "https://example.com/ach.png",
+      "desc": "",
+      "tags": "test",
+      "prizeId": 2,
+      "steps": 3,
+      "stepDesc": "Complete 3 test steps",
+      "claimedStatus": false
     }
   ]
 }
 ```
 
-If an achievement has no row in `user_achievements`, its `desc` will be an empty string.
+If an achievement has no row in `user_achievements`, its `desc` will be an empty string and `stepsGot`/`needSteps` will be omitted.
 
 #### GET /api/user/events
 Get user events plus available competitions (requires JWT).
@@ -143,7 +155,7 @@ Take event prize (requires JWT).
 }
 ```
 
-#### POST /api/user/claim_achivement
+#### POST /api/user/claim_achovement_prize
 Claim a completed achievement and receive its prize (requires JWT).
 
 **Request Body:**
@@ -157,7 +169,6 @@ Claim a completed achievement and receive its prize (requires JWT).
 ```json
 {
   "status": "claimed",
-  "got_prize_id": 123,
   "prize_value": "10 USDT",
   "achievementId": "first_bet_success"
 }

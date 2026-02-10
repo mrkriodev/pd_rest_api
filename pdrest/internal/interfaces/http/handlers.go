@@ -92,7 +92,7 @@ func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingServi
 	user.GET("/friends_ratings", h.UserFriendsRatings)
 	user.GET("/achievements", h.UserAchievements)
 	user.GET("/events", h.UserEvents)
-	user.POST("/claim_achivement", h.ClaimAchievement)
+	user.POST("/claim_achovement_prize", h.ClaimAchievement)
 	user.POST("/update_achivement_satus", h.UpdateAchievementStatus)
 	user.POST("/take_part_on_event", h.TakePartOnEvent)
 	user.POST("/update_prise_status", h.UpdateUserEventPrizeStatus)
@@ -1394,7 +1394,6 @@ func (h *HTTPHandler) ClaimAchievement(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"status":        "claimed",
-		"got_prize_id":  prize.ID,
 		"prize_value":   prize.PrizeValue,
 		"achievementId": req.AchievementID,
 	})

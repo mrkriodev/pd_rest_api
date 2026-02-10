@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"pdrest/internal/domain"
@@ -74,8 +75,8 @@ func (r *PostgresAchievementRepository) GetUserAchievements(ctx context.Context,
 		SELECT a.id, a.badge, a.title, a.image_url,
 		       CASE WHEN ua.achievement_id IS NULL THEN '' ELSE a.desc_text END AS desc_text,
 		       a.tags, a.prize_id, a.steps, a.step_desc,
-		       COALESCE(ua.steps_got, 0) AS steps_got,
-		       COALESCE(ua.need_steps, 0) AS need_steps,
+		       CASE WHEN ua.achievement_id IS NULL THEN NULL ELSE ua.steps_got END AS steps_got,
+		       CASE WHEN ua.achievement_id IS NULL THEN NULL ELSE ua.need_steps END AS need_steps,
 		       COALESCE(ua.claimed_status, FALSE) AS claimed_status
 		FROM achievements a
 		LEFT JOIN user_achievements ua
@@ -105,6 +106,8 @@ func (r *PostgresAchievementRepository) GetUserAchievements(ctx context.Context,
 	var achievements []domain.UserAchievementEntry
 	for rows.Next() {
 		var achievement domain.UserAchievementEntry
+		var stepsGot sql.NullInt32
+		var needSteps sql.NullInt32
 		if err := rows.Scan(
 			&achievement.ID,
 			&achievement.Badge,
@@ -115,11 +118,19 @@ func (r *PostgresAchievementRepository) GetUserAchievements(ctx context.Context,
 			&achievement.PrizeID,
 			&achievement.Steps,
 			&achievement.StepDesc,
-			&achievement.StepsGot,
-			&achievement.NeedSteps,
+			&stepsGot,
+			&needSteps,
 			&achievement.ClaimedStatus,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan user achievement: %w", err)
+		}
+		if stepsGot.Valid {
+			value := int(stepsGot.Int32)
+			achievement.StepsGot = &value
+		}
+		if needSteps.Valid {
+			value := int(needSteps.Int32)
+			achievement.NeedSteps = &value
 		}
 		achievements = append(achievements, achievement)
 	}

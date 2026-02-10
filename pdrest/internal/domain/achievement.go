@@ -37,8 +37,8 @@ type UserAchievementEntry struct {
 	PrizeID       *int   `json:"prizeId,omitempty"`
 	Steps         int    `json:"steps"`
 	StepDesc      string `json:"stepDesc"`
-	StepsGot      int    `json:"stepsGot"`
-	NeedSteps     int    `json:"needSteps"`
+	StepsGot      *int   `json:"stepsGot,omitempty"`
+	NeedSteps     *int   `json:"needSteps,omitempty"`
 	ClaimedStatus bool   `json:"claimedStatus"`
 }
 

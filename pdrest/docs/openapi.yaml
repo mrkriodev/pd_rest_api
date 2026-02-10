@@ -824,7 +824,7 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
-  /user/claim_achivement:
+  /user/claim_achovement_prize:
     post:
       summary: Claim completed achievement
       security:
@@ -1652,9 +1652,11 @@ components:
         stepsGot:
           type: integer
           description: Steps already completed by the user
+          nullable: true
         needSteps:
           type: integer
           description: Steps required to claim the achievement
+          nullable: true
         claimedStatus:
           type: boolean
           description: Whether the achievement has been claimed
