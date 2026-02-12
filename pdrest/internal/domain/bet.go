@@ -14,6 +14,7 @@ type Bet struct {
 	OpenTime   time.Time  `json:"openTime"`
 	CloseTime  *time.Time `json:"closeTime,omitempty"`
 	Claimed    bool       `json:"claimedStatus"`
+	PrizeStatus string    `json:"prizeStatus,omitempty"`
 	CreatedAt  int64      `json:"created_at,omitempty"`
 	UpdatedAt  int64      `json:"updated_at,omitempty"`
 }

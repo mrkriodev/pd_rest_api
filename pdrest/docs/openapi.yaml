@@ -1748,6 +1748,10 @@ components:
           type: string
           format: date-time
           nullable: true
+        prizeStatus:
+          type: string
+          description: Prize status for the bet
+          enum: [pending, win, lose]
         created_at:
           type: integer
           format: int64

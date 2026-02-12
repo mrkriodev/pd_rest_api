@@ -61,7 +61,7 @@ func (s *BetService) OpenBet(ctx context.Context, userUUID string, req *domain.O
 		Pair:      req.Pair,
 		Timeframe: req.Timeframe,
 		OpenPrice: req.OpenPrice,
-		OpenTime:  req.OpenTime,
+		OpenTime:  req.OpenTime.UTC(),
 	}
 
 	if err := s.repo.CreateBet(ctx, bet); err != nil {
@@ -96,7 +96,7 @@ func (s *BetService) GetBetStatus(ctx context.Context, betID int, userUUID strin
 	}
 
 	// Check if timeframe has passed (timeframe is in seconds)
-	now := time.Now()
+	now := time.Now().UTC()
 	timeframeDuration := time.Duration(bet.Timeframe) * time.Second
 	expectedCloseTime := bet.OpenTime.Add(timeframeDuration)
 
@@ -139,6 +139,10 @@ func (s *BetService) GetUnfinishedBetsByUser(ctx context.Context, userUUID strin
 		return nil, fmt.Errorf("failed to get unfinished bets: %w", err)
 	}
 
+	for i := range bets {
+		bets[i].PrizeStatus = determinePrizeStatus(bets[i])
+	}
+
 	return bets, nil
 }
 
@@ -162,4 +166,21 @@ func (s *BetService) ClaimBet(ctx context.Context, betID int, userUUID string) e
 	}
 
 	return nil
+}
+
+func determinePrizeStatus(bet domain.Bet) string {
+	if bet.ClosePrice == nil {
+		return "pending"
+	}
+	switch bet.Side {
+	case "pump":
+		if *bet.ClosePrice > bet.OpenPrice {
+			return "win"
+		}
+	case "dump":
+		if *bet.ClosePrice < bet.OpenPrice {
+			return "win"
+		}
+	}
+	return "lose"
 }

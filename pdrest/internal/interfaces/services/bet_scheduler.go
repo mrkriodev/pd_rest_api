@@ -118,7 +118,7 @@ func (s *BetScheduler) closeBet(betID int, pair string) error {
 	}
 
 	// Update bet with close price
-	closeTime := time.Now()
+	closeTime := time.Now().UTC()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

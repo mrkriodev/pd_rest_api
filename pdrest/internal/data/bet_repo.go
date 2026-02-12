@@ -106,7 +106,13 @@ func (r *PostgresBetRepository) GetBetByID(ctx context.Context, betID int, userU
 	}
 
 	bet.ClosePrice = closePrice
-	bet.CloseTime = closeTime
+	bet.OpenTime = normalizeBetTimestamp(bet.OpenTime)
+	if closeTime != nil {
+		normalized := normalizeBetTimestamp(*closeTime)
+		bet.CloseTime = &normalized
+	} else {
+		bet.CloseTime = nil
+	}
 
 	return &bet, nil
 }
@@ -188,7 +194,13 @@ func (r *PostgresBetRepository) GetWinningBetsByUser(ctx context.Context, userUU
 		}
 
 		bet.ClosePrice = closePrice
-		bet.CloseTime = closeTime
+		bet.OpenTime = normalizeBetTimestamp(bet.OpenTime)
+		if closeTime != nil {
+			normalized := normalizeBetTimestamp(*closeTime)
+			bet.CloseTime = &normalized
+		} else {
+			bet.CloseTime = nil
+		}
 		bets = append(bets, bet)
 	}
 
@@ -261,7 +273,13 @@ func (r *PostgresBetRepository) GetClosedBetsByUser(ctx context.Context, userUUI
 		}
 
 		bet.ClosePrice = closePrice
-		bet.CloseTime = closeTime
+		bet.OpenTime = normalizeBetTimestamp(bet.OpenTime)
+		if closeTime != nil {
+			normalized := normalizeBetTimestamp(*closeTime)
+			bet.CloseTime = &normalized
+		} else {
+			bet.CloseTime = nil
+		}
 		bets = append(bets, bet)
 	}
 
@@ -312,7 +330,13 @@ func (r *PostgresBetRepository) GetUnfinishedBetsByUser(ctx context.Context, use
 		}
 
 		bet.ClosePrice = closePrice
-		bet.CloseTime = closeTime
+		bet.OpenTime = normalizeBetTimestamp(bet.OpenTime)
+		if closeTime != nil {
+			normalized := normalizeBetTimestamp(*closeTime)
+			bet.CloseTime = &normalized
+		} else {
+			bet.CloseTime = nil
+		}
 		bets = append(bets, bet)
 	}
 
@@ -327,6 +351,20 @@ type InMemoryBetRepository struct{}
 
 func NewInMemoryBetRepository() *InMemoryBetRepository {
 	return &InMemoryBetRepository{}
+}
+
+func normalizeBetTimestamp(value time.Time) time.Time {
+	// Interpret timestamp-without-timezone as UTC without shifting wall clock.
+	return time.Date(
+		value.Year(),
+		value.Month(),
+		value.Day(),
+		value.Hour(),
+		value.Minute(),
+		value.Second(),
+		value.Nanosecond(),
+		time.UTC,
+	)
 }
 
 func (r *InMemoryBetRepository) CreateBet(ctx context.Context, bet *domain.Bet) error {

@@ -651,7 +651,8 @@ Get unfinished bets (closePrice is null) for a user.
       "openPrice": 2765,
       "openTime": "2025-11-09T12:35:00Z",
       "closePrice": null,
-      "closeTime": null
+      "closeTime": null,
+      "prizeStatus": "pending"
     }
   ]
 }
