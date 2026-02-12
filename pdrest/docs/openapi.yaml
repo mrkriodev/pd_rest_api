@@ -1109,7 +1109,7 @@ paths:
 
   /user/unfinished_bets/{uuid}:
     get:
-      summary: Get unfinished bets for user
+      summary: Get unfinished bets for user (open or unclaimed)
       tags:
         - User
       security:

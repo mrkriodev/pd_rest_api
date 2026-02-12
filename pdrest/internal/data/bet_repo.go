@@ -295,7 +295,7 @@ func (r *PostgresBetRepository) GetUnfinishedBetsByUser(ctx context.Context, use
 		SELECT id, user_uuid, side, sum, pair, timeframe, open_price, close_price, open_time, close_time, claimed_status, created_at, updated_at
 		FROM bets
 		WHERE user_uuid = $1
-		  AND close_price IS NULL
+		  AND (close_price IS NULL OR claimed_status = FALSE)
 		ORDER BY open_time DESC
 	`
 

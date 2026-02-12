@@ -629,7 +629,7 @@ Get user UUID by session_id + IP (derived preauth token).
 ```
 
 #### GET /api/user/unfinished_bets/:uuid
-Get unfinished bets (closePrice is null) for a user.
+Get unfinished bets (open bets or closed but unclaimed) for a user.
 
 **Headers:**
 - `Authorization: Bearer <jwt_token>` (required)
