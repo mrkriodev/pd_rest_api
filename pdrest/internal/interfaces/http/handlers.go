@@ -964,6 +964,19 @@ func (h *HTTPHandler) RegisterGoogleUserOAuth2(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
 
+	userInfo, err := h.googleAuthService.FetchUserInfo(ctx, token.AccessToken)
+	if err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	}
+	if userInfo != nil {
+		if googleUserInfo.Email == "" {
+			googleUserInfo.Email = userInfo.Email
+		}
+		if googleUserInfo.Name == "" {
+			googleUserInfo.Name = userInfo.Name
+		}
+	}
+
 	// Find user by session_id
 	sessionUser, err := h.userService.GetUserBySessionID(ctx, sessionID)
 	if err != nil {

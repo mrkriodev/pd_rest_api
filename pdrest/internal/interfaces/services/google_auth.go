@@ -2,8 +2,12 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 
 	"google.golang.org/api/idtoken"
 )
@@ -58,5 +62,52 @@ func (s *GoogleAuthService) ValidateWithGoogle(token string) (*GoogleUserInfo, e
 		ID:    userID,
 		Email: email,
 		Name:  name,
+	}, nil
+}
+
+// FetchUserInfo requests user info from Google OAuth userinfo endpoint.
+func (s *GoogleAuthService) FetchUserInfo(ctx context.Context, accessToken string) (*GoogleUserInfo, error) {
+	if accessToken == "" {
+		return nil, errors.New("access token is required")
+	}
+
+	endpoint, err := url.Parse("https://openidconnect.googleapis.com/v1/userinfo")
+	if err != nil {
+		return nil, fmt.Errorf("failed to build userinfo URL: %w", err)
+	}
+	query := endpoint.Query()
+	query.Set("client_id", s.clientID)
+	endpoint.RawQuery = query.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create userinfo request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch userinfo: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to fetch userinfo: status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var payload struct {
+		Sub   string `json:"sub"`
+		Email string `json:"email"`
+		Name  string `json:"name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, fmt.Errorf("failed to decode userinfo response: %w", err)
+	}
+
+	return &GoogleUserInfo{
+		ID:    payload.Sub,
+		Email: payload.Email,
+		Name:  payload.Name,
 	}, nil
 }
