@@ -66,7 +66,7 @@ Get achievements earned by the authenticated user (requires JWT).
       "imageUrl": "https://mrkriodev.github.io/mrkrio.github.io/data/1-bet-ach.svg",
       "desc": "Awarded for the first successful bet.",
       "tags": "bet",
-      "prizeId": 1,
+      "prizeDesc": "10 USDT",
       "steps": 1,
       "stepDesc": "Win your first bet",
       "stepsGot": 1,
@@ -80,7 +80,7 @@ Get achievements earned by the authenticated user (requires JWT).
       "imageUrl": "https://example.com/ach.png",
       "desc": "",
       "tags": "test",
-      "prizeId": 2,
+      "prizeDesc": "50 USDT",
       "steps": 3,
       "stepDesc": "Complete 3 test steps",
       "claimedStatus": false

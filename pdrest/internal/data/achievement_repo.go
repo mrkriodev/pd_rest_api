@@ -74,13 +74,17 @@ func (r *PostgresAchievementRepository) GetUserAchievements(ctx context.Context,
 	query := `
 		SELECT a.id, a.badge, a.title, a.image_url,
 		       CASE WHEN ua.achievement_id IS NULL THEN '' ELSE a.desc_text END AS desc_text,
-		       a.tags, a.prize_id, a.steps, a.step_desc,
+		       a.tags,
+		       CASE WHEN a.prize_id IS NULL THEN NULL ELSE pv.label END AS prize_desc,
+		       a.steps, a.step_desc,
 		       CASE WHEN ua.achievement_id IS NULL THEN NULL ELSE ua.steps_got END AS steps_got,
 		       CASE WHEN ua.achievement_id IS NULL THEN NULL ELSE ua.need_steps END AS need_steps,
 		       COALESCE(ua.claimed_status, FALSE) AS claimed_status
 		FROM achievements a
 		LEFT JOIN user_achievements ua
 		       ON a.id = ua.achievement_id AND ua.user_uuid = $1
+		LEFT JOIN prize_values pv
+		       ON pv.id = a.prize_id
 		ORDER BY
 			CASE
 				WHEN ua.achievement_id IS NOT NULL
@@ -106,6 +110,7 @@ func (r *PostgresAchievementRepository) GetUserAchievements(ctx context.Context,
 	var achievements []domain.UserAchievementEntry
 	for rows.Next() {
 		var achievement domain.UserAchievementEntry
+		var prizeDesc sql.NullString
 		var stepsGot sql.NullInt32
 		var needSteps sql.NullInt32
 		if err := rows.Scan(
@@ -115,7 +120,7 @@ func (r *PostgresAchievementRepository) GetUserAchievements(ctx context.Context,
 			&achievement.ImageURL,
 			&achievement.Desc,
 			&achievement.Tags,
-			&achievement.PrizeID,
+			&prizeDesc,
 			&achievement.Steps,
 			&achievement.StepDesc,
 			&stepsGot,
@@ -123,6 +128,10 @@ func (r *PostgresAchievementRepository) GetUserAchievements(ctx context.Context,
 			&achievement.ClaimedStatus,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan user achievement: %w", err)
+		}
+		if prizeDesc.Valid {
+			value := prizeDesc.String
+			achievement.PrizeDesc = &value
 		}
 		if stepsGot.Valid {
 			value := int(stepsGot.Int32)

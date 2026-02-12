@@ -1548,9 +1548,10 @@ components:
         tags:
           type: string
           description: Tags for filtering (e.g., "global")
-        prizeId:
-          type: integer
-          description: Prize value id linked to this achievement
+        prizeDesc:
+          type: string
+          description: Prize description from prize_values (e.g., label)
+          nullable: true
         steps:
           type: integer
           description: Number of steps required
