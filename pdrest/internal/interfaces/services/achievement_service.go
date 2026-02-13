@@ -7,6 +7,7 @@ import (
 	"pdrest/internal/data"
 	"pdrest/internal/domain"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -57,9 +58,28 @@ func (s *AchievementService) GetUserAchievements(ctx context.Context, userUUID s
 		return nil, err
 	}
 
+	filtered := achievements[:0]
+	for _, achievement := range achievements {
+		if !hasTag(achievement.Tags, "event") {
+			filtered = append(filtered, achievement)
+		}
+	}
+
 	return &domain.UserAchievementsResponse{
-		Achievements: achievements,
+		Achievements: filtered,
 	}, nil
+}
+
+func hasTag(tags string, target string) bool {
+	if tags == "" || target == "" {
+		return false
+	}
+	for _, tag := range strings.Split(tags, ",") {
+		if strings.TrimSpace(tag) == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *AchievementService) UpdateAchievementStatus(ctx context.Context, userUUID string, achievementID string) (string, error) {

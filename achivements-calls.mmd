@@ -1,0 +1,14 @@
+flowchart TB
+  user[User]
+
+  user -->|GET /api/available_achievements| hAvailable[HTTPHandler.AvailableAchievements]
+  hAvailable --> sGetAvailable[AchievementService.GetAvailableAchievements]
+
+  user -->|GET /api/user/achievements (JWT)| hUser[HTTPHandler.UserAchievements]
+  hUser --> sGetUser[AchievementService.GetUserAchievements]
+
+  user -->|POST /api/user/update_achivement_satus (JWT)| hUpdate[HTTPHandler.UpdateAchievementStatus]
+  hUpdate --> sUpdate[AchievementService.UpdateAchievementStatus]
+
+  user -->|POST /api/user/claim_achovement_prize (JWT)| hClaim[HTTPHandler.ClaimAchievement]
+  hClaim --> sClaim[AchievementService.ClaimAchievement]

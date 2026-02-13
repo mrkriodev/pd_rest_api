@@ -1,0 +1,23 @@
+flowchart TB
+  user[User]
+
+  user -->|GET /api/available_events?tag=competition| hAvailable[HTTPHandler.AvailableEvents]
+  hAvailable --> sGetAvailableEvents[EventService.GetAvailableEvents]
+
+  user -->|GET /api/user/events (JWT)| hUserEvents[HTTPHandler.UserEvents]
+  hUserEvents --> sGetUserEvents[EventService.GetUserEvents]
+
+  user -->|POST /api/user/take_part_on_event (JWT)| hTakePart[HTTPHandler.TakePartOnEvent]
+  hTakePart --> sTakePart[EventService.TakePartOnEvent]
+
+  user -->|POST /api/user/update_prise_status (JWT)| hUpdatePrize[HTTPHandler.UpdateUserEventPrizeStatus]
+  hUpdatePrize --> sUpdatePrize[EventService.UpdateUserEventPrizeStatus]
+
+  user -->|POST /api/user/take_event_prize (JWT)| hTakePrize[HTTPHandler.TakeEventPrize]
+  hTakePrize --> sTakePrize[EventService.TakeEventPrize]
+
+  user -->|POST /api/user/event_progress (JWT)| hProgress[HTTPHandler.UserEventProgress]
+  hProgress --> sProgress[EventService.GetUserEventProgress]
+
+  user -->|POST /api/user/best_in_event| hBest[HTTPHandler.BestInEvent]
+  hBest --> sBest[EventService.GetBestInEvent]
