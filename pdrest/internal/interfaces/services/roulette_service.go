@@ -232,10 +232,18 @@ func (s *RouletteService) Spin(ctx context.Context, preauthTokenStr string, req 
 			}
 		}
 	} else {
-		// Validate provided preauth token
-		preauthToken, err = s.repo.ValidatePreauthToken(ctx, preauthTokenStr)
+		// Load provided preauth token (allow used tokens; we will guard after roulette lookup)
+		preauthToken, err = s.repo.GetPreauthToken(ctx, preauthTokenStr)
 		if err != nil {
-			return nil, fmt.Errorf("invalid preauth token: %w", err)
+			return nil, fmt.Errorf("failed to get preauth token: %w", err)
+		}
+		if preauthToken == nil {
+			return nil, errors.New("preauth token not found")
+		}
+		// Check if token is expired
+		nowMs := time.Now().UTC().UnixMilli()
+		if preauthToken.ExpiresAt < nowMs {
+			return nil, errors.New("preauth token expired")
 		}
 	}
 
@@ -265,6 +273,11 @@ func (s *RouletteService) Spin(ctx context.Context, preauthTokenStr string, req 
 	roulette, err := s.repo.GetRouletteByPreauthToken(ctx, preauthToken.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get roulette: %w", err)
+	}
+
+	// If token was already used, only block when no roulette exists yet
+	if preauthToken.IsUsed && roulette == nil {
+		return nil, errors.New("preauth token already used")
 	}
 
 	// Check if prize already taken

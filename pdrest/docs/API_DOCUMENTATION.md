@@ -103,6 +103,7 @@ Get user events plus available competitions (requires JWT).
       "badge": "Event badge",
       "title": "Event title",
       "desc": "Event description",
+      "startTime": "2026-02-09T00:00:00Z",
       "deadline": "2025-12-01T12:00:00Z",
       "tags": "competition",
       "reward": [...],
@@ -110,6 +111,7 @@ Get user events plus available competitions (requires JWT).
       "status": "joined",
       "joinedAt": "2025-01-01T12:00:00Z",
       "hasPriseStatus": null,
+      "prizeDesc": "50 USDT",
       "prizeTakenStatus": false
     }
   ]
@@ -134,6 +136,43 @@ Update event prize status for user (requires JWT).
 }
 ```
 
+#### POST /api/user/event_progress
+Get user event progress (requires JWT).
+
+**Request Body:**
+```json
+{
+  "eventId": "event_id"
+}
+```
+
+**Response:**
+```json
+{
+  "eventId": "event_id",
+  "participating": true,
+  "collectedPoints": 40
+}
+```
+
+#### POST /api/user/best_in_event
+Get current leader in event (requires JWT).
+
+**Request Body:**
+```json
+{
+  "eventId": "event_id"
+}
+```
+
+**Response:**
+```json
+{
+  "leader_image": "https://mrkriodev.github.io/mrkrio.github.io/data/events/event-weekly-3.png",
+  "points": 123
+}
+```
+
 #### POST /api/user/take_event_prize
 Take event prize (requires JWT).
 
@@ -151,7 +190,8 @@ Take event prize (requires JWT).
   "got_prize_id": 123,
   "prize_value": "100 USDT",
   "prize_value_id": 10,
-  "eventId": "event_id"
+  "eventId": "event_id",
+  "image_url": "https://mrkriodev.github.io/mrkrio.github.io/data/events/event-weekly-3.png"
 }
 ```
 

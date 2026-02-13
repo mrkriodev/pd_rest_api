@@ -23,6 +23,7 @@ type EventRepository interface {
 	GetUserEventPrizeStatus(ctx context.Context, userUUID string, eventID string) (*bool, *int, *bool, error)
 	UpdateUserEventPrizeStatusIfUnknown(ctx context.Context, userUUID string, eventID string, hasPrise *bool, prizeValueID *int) (bool, error)
 	UpdateUserEventPrizeTakenStatusIfNotTaken(ctx context.Context, userUUID string, eventID string, taken bool) (bool, error)
+	HasUserEvent(ctx context.Context, userUUID string, eventID string) (bool, error)
 }
 
 type PostgresEventRepository struct {
@@ -36,7 +37,7 @@ func NewPostgresEventRepository(pool *pgxpool.Pool) *PostgresEventRepository {
 // GetAllEvents retrieves all events from the database, optionally filtered by tag
 func (r *PostgresEventRepository) GetAllEvents(ctx context.Context, tag string) ([]domain.Event, error) {
 	query := `
-		SELECT id, badge, title, desc_text, deadline, tags, reward, info
+		SELECT id, badge, title, desc_text, start_time, deadline, tags, reward, info
 		FROM all_events
 		WHERE ($1 = '' OR tags ILIKE '%' || $1 || '%')
 		ORDER BY deadline ASC
@@ -52,6 +53,7 @@ func (r *PostgresEventRepository) GetAllEvents(ctx context.Context, tag string) 
 	for rows.Next() {
 		var event domain.Event
 		var rewardJSON []byte
+		var startMs int64
 		var deadlineMs int64
 
 		err := rows.Scan(
@@ -59,6 +61,7 @@ func (r *PostgresEventRepository) GetAllEvents(ctx context.Context, tag string) 
 			&event.Badge,
 			&event.Title,
 			&event.Desc,
+			&startMs,
 			&deadlineMs,
 			&event.Tags,
 			&rewardJSON,
@@ -69,6 +72,7 @@ func (r *PostgresEventRepository) GetAllEvents(ctx context.Context, tag string) 
 		}
 
 		// Convert Unix milliseconds (UTC) to time.Time
+		event.StartTime = time.Unix(0, startMs*int64(time.Millisecond)).UTC()
 		event.Deadline = time.Unix(0, deadlineMs*int64(time.Millisecond)).UTC()
 
 		// Unmarshal JSONB reward array
@@ -89,13 +93,14 @@ func (r *PostgresEventRepository) GetAllEvents(ctx context.Context, tag string) 
 // GetEventByID retrieves a single event by ID
 func (r *PostgresEventRepository) GetEventByID(ctx context.Context, id string) (*domain.Event, error) {
 	query := `
-		SELECT id, badge, title, desc_text, deadline, tags, reward, info
+		SELECT id, badge, title, desc_text, start_time, deadline, tags, reward, info
 		FROM all_events
 		WHERE id = $1
 	`
 
 	var event domain.Event
 	var rewardJSON []byte
+	var startMs int64
 	var deadlineMs int64
 
 	err := r.pool.QueryRow(ctx, query, id).Scan(
@@ -103,6 +108,7 @@ func (r *PostgresEventRepository) GetEventByID(ctx context.Context, id string) (
 		&event.Badge,
 		&event.Title,
 		&event.Desc,
+		&startMs,
 		&deadlineMs,
 		&event.Tags,
 		&rewardJSON,
@@ -116,6 +122,7 @@ func (r *PostgresEventRepository) GetEventByID(ctx context.Context, id string) (
 	}
 
 	// Convert Unix milliseconds (UTC) to time.Time
+	event.StartTime = time.Unix(0, startMs*int64(time.Millisecond)).UTC()
 	event.Deadline = time.Unix(0, deadlineMs*int64(time.Millisecond)).UTC()
 
 	// Unmarshal JSONB reward array
@@ -135,21 +142,23 @@ func (r *PostgresEventRepository) CreateEvent(ctx context.Context, event *domain
 	}
 
 	// Convert time.Time to Unix milliseconds (UTC)
+	startMs := event.StartTime.UTC().UnixMilli()
 	deadlineMs := event.Deadline.UTC().UnixMilli()
 	nowMs := time.Now().UTC().UnixMilli()
 
 	query := `
-		INSERT INTO all_events (id, badge, title, desc_text, deadline, tags, reward, info, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		INSERT INTO all_events (id, badge, title, desc_text, start_time, deadline, tags, reward, info, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		ON CONFLICT (id) DO UPDATE SET
 			badge = EXCLUDED.badge,
 			title = EXCLUDED.title,
 			desc_text = EXCLUDED.desc_text,
+			start_time = EXCLUDED.start_time,
 			deadline = EXCLUDED.deadline,
 			tags = EXCLUDED.tags,
 			reward = EXCLUDED.reward,
 			info = EXCLUDED.info,
-			updated_at = $10
+			updated_at = $11
 	`
 
 	_, err = r.pool.Exec(ctx, query,
@@ -157,6 +166,7 @@ func (r *PostgresEventRepository) CreateEvent(ctx context.Context, event *domain
 		event.Badge,
 		event.Title,
 		event.Desc,
+		startMs,
 		deadlineMs,
 		event.Tags,
 		rewardJSON,
@@ -180,6 +190,7 @@ func (r *PostgresEventRepository) UpdateEvent(ctx context.Context, event *domain
 	}
 
 	// Convert time.Time to Unix milliseconds (UTC)
+	startMs := event.StartTime.UTC().UnixMilli()
 	deadlineMs := event.Deadline.UTC().UnixMilli()
 	nowMs := time.Now().UTC().UnixMilli()
 
@@ -188,11 +199,12 @@ func (r *PostgresEventRepository) UpdateEvent(ctx context.Context, event *domain
 		SET badge = $2,
 		    title = $3,
 		    desc_text = $4,
-		    deadline = $5,
-		    tags = $6,
-		    reward = $7,
-		    info = $8,
-		    updated_at = $9
+		    start_time = $5,
+		    deadline = $6,
+		    tags = $7,
+		    reward = $8,
+		    info = $9,
+		    updated_at = $10
 		WHERE id = $1
 	`
 
@@ -201,6 +213,7 @@ func (r *PostgresEventRepository) UpdateEvent(ctx context.Context, event *domain
 		event.Badge,
 		event.Title,
 		event.Desc,
+		startMs,
 		deadlineMs,
 		event.Tags,
 		rewardJSON,
@@ -252,15 +265,18 @@ func (r *PostgresEventRepository) AddUserEvent(ctx context.Context, userUUID str
 func (r *PostgresEventRepository) GetUserEventsWithAvailable(ctx context.Context, userUUID string, tag string, nowMs int64) ([]domain.UserEventEntry, error) {
 	query := `
 		WITH user_events_cte AS (
-			SELECT e.id, e.badge, e.title, e.desc_text, e.deadline, e.tags, e.reward, e.info,
-			       ue.status, ue.created_at AS joined_at, ue.has_prise_status, ue.prize_taken_status
+			SELECT e.id, e.badge, e.title, e.desc_text, e.start_time, e.deadline, e.tags, e.reward, e.info,
+			       ue.status, ue.created_at AS joined_at, ue.has_prise_status, ue.prize_taken_status,
+			       pv.label AS prize_desc
 			FROM user_events ue
 			JOIN all_events e ON e.id = ue.event_id
+			LEFT JOIN prize_values pv ON pv.id = ue.prize_value_id
 			WHERE ue.user_uuid = $1
 		),
 		available_events AS (
-			SELECT e.id, e.badge, e.title, e.desc_text, e.deadline, e.tags, e.reward, e.info,
-			       'available' AS status, NULL::BIGINT AS joined_at, NULL::BOOL AS has_prise_status, FALSE AS prize_taken_status
+			SELECT e.id, e.badge, e.title, e.desc_text, e.start_time, e.deadline, e.tags, e.reward, e.info,
+			       'available' AS status, NULL::BIGINT AS joined_at, NULL::BOOL AS has_prise_status, FALSE AS prize_taken_status,
+			       NULL::TEXT AS prize_desc
 			FROM all_events e
 			LEFT JOIN user_events ue ON ue.event_id = e.id AND ue.user_uuid = $1
 			WHERE ue.event_id IS NULL
@@ -283,6 +299,7 @@ func (r *PostgresEventRepository) GetUserEventsWithAvailable(ctx context.Context
 	for rows.Next() {
 		var event domain.UserEventEntry
 		var rewardJSON []byte
+		var startMs int64
 		var deadlineMs int64
 		var joinedAtMs *int64
 
@@ -291,6 +308,7 @@ func (r *PostgresEventRepository) GetUserEventsWithAvailable(ctx context.Context
 			&event.Badge,
 			&event.Title,
 			&event.Desc,
+			&startMs,
 			&deadlineMs,
 			&event.Tags,
 			&rewardJSON,
@@ -299,10 +317,12 @@ func (r *PostgresEventRepository) GetUserEventsWithAvailable(ctx context.Context
 			&joinedAtMs,
 			&event.HasPrise,
 			&event.PrizeTakenStatus,
+			&event.PrizeDesc,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan user event: %w", err)
 		}
 
+		event.StartTime = time.Unix(0, startMs*int64(time.Millisecond)).UTC()
 		event.Deadline = time.Unix(0, deadlineMs*int64(time.Millisecond)).UTC()
 		if joinedAtMs != nil {
 			joinedAt := time.Unix(0, (*joinedAtMs)*int64(time.Millisecond)).UTC()
@@ -376,4 +396,21 @@ func (r *PostgresEventRepository) UpdateUserEventPrizeTakenStatusIfNotTaken(ctx 
 	}
 
 	return result.RowsAffected() > 0, nil
+}
+
+func (r *PostgresEventRepository) HasUserEvent(ctx context.Context, userUUID string, eventID string) (bool, error) {
+	query := `
+		SELECT EXISTS (
+			SELECT 1
+			FROM user_events
+			WHERE user_uuid = $1 AND event_id = $2
+		)
+	`
+
+	var exists bool
+	if err := r.pool.QueryRow(ctx, query, userUUID, eventID).Scan(&exists); err != nil {
+		return false, fmt.Errorf("failed to check user event: %w", err)
+	}
+
+	return exists, nil
 }

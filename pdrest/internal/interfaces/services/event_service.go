@@ -5,21 +5,25 @@ import (
 	"errors"
 	"pdrest/internal/data"
 	"pdrest/internal/domain"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
 type EventService struct {
-	repo           data.EventRepository
-	prizeRepo      data.PrizeRepository
-	prizeValueRepo data.PrizeValueRepository
+	repo            data.EventRepository
+	prizeRepo       data.PrizeRepository
+	prizeValueRepo  data.PrizeValueRepository
+	achievementRepo data.AchievementRepository
 }
 
-func NewEventService(r data.EventRepository, prizeRepo data.PrizeRepository, prizeValueRepo data.PrizeValueRepository) *EventService {
+func NewEventService(r data.EventRepository, prizeRepo data.PrizeRepository, prizeValueRepo data.PrizeValueRepository, achievementRepo data.AchievementRepository) *EventService {
 	return &EventService{
-		repo:           r,
-		prizeRepo:      prizeRepo,
-		prizeValueRepo: prizeValueRepo,
+		repo:            r,
+		prizeRepo:       prizeRepo,
+		prizeValueRepo:  prizeValueRepo,
+		achievementRepo: achievementRepo,
 	}
 }
 
@@ -77,62 +81,101 @@ func (s *EventService) UpdateUserEventPrizeStatus(ctx context.Context, userUUID 
 	if eventID == "" {
 		return "", errors.New("event_id is required")
 	}
+	if s.repo == nil || s.prizeRepo == nil || s.prizeValueRepo == nil {
+		return "", errors.New("event service dependencies are not configured")
+	}
 
-	hasPrise, _, _, err := s.repo.GetUserEventPrizeStatus(ctx, userUUID, eventID)
+	event, err := s.repo.GetEventByID(ctx, eventID)
 	if err != nil {
 		return "", err
 	}
-	if hasPrise != nil {
+	if event == nil {
+		return "", errors.New("event not found")
+	}
+	if time.Now().UTC().Before(event.Deadline) {
+		return "", errors.New("event is not finished yet")
+	}
+	startMs := event.StartTime.UTC().UnixMilli()
+
+	hasPriseStatus, _, _, err := s.repo.GetUserEventPrizeStatus(ctx, userUUID, eventID)
+	if err != nil {
+		return "", err
+	}
+	if hasPriseStatus != nil {
 		return "already_defined", nil
 	}
 
-	switch eventID {
-	case "example":
-		// TODO: implement event-specific checks and set hasPrise/prizeValueID
-		hasPrise := false
-		var prizeValueID *int
+	leaderboard, err := s.prizeRepo.GetBetPrizeLeaderboard(ctx, eventID, startMs, event.Deadline.UTC().UnixMilli(), 3)
+	if err != nil {
+		return "", err
+	}
 
-		updated, err := s.repo.UpdateUserEventPrizeStatusIfUnknown(ctx, userUUID, eventID, &hasPrise, prizeValueID)
+	hasPrise := false
+	var prizeValueID *int
+
+	for idx, entry := range leaderboard {
+		if entry.UserUUID != userUUID {
+			continue
+		}
+		hasPrise = true
+
+		prizeValue, err := s.prizeValueRepo.GetPrizeValuesByEventID(ctx, eventID)
 		if err != nil {
 			return "", err
 		}
-		if !updated {
-			return "already_defined", nil
+		if len(prizeValue) == 0 {
+			return "", errors.New("prize values not found for event")
 		}
-		return "updated", nil
-	default:
-		return "", errors.New("unsupported event id")
+
+		// Sort by value descending and pick index (0-based) for place.
+		sort.Slice(prizeValue, func(i, j int) bool {
+			return prizeValue[i].Value > prizeValue[j].Value
+		})
+		if idx >= len(prizeValue) {
+			break
+		}
+		prizeValueID = &prizeValue[idx].ID
+		break
 	}
+
+	updated, err := s.repo.UpdateUserEventPrizeStatusIfUnknown(ctx, userUUID, eventID, &hasPrise, prizeValueID)
+	if err != nil {
+		return "", err
+	}
+	if !updated {
+		return "already_defined", nil
+	}
+	return "updated", nil
 }
 
-func (s *EventService) TakeEventPrize(ctx context.Context, userUUID string, eventID string) (*domain.Prize, error) {
+func (s *EventService) TakeEventPrize(ctx context.Context, userUUID string, eventID string) (*domain.Prize, string, error) {
 	if userUUID == "" {
-		return nil, errors.New("user uuid is required")
+		return nil, "", errors.New("user uuid is required")
 	}
 	if eventID == "" {
-		return nil, errors.New("event_id is required")
+		return nil, "", errors.New("event_id is required")
 	}
-	if s.repo == nil || s.prizeRepo == nil || s.prizeValueRepo == nil {
-		return nil, errors.New("event service dependencies are not configured")
+	if s.repo == nil || s.prizeRepo == nil || s.prizeValueRepo == nil || s.achievementRepo == nil {
+		return nil, "", errors.New("event service dependencies are not configured")
 	}
 
 	_, prizeValueID, prizeTaken, err := s.repo.GetUserEventPrizeStatus(ctx, userUUID, eventID)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if prizeValueID == nil {
-		return nil, errors.New("prize_value_id is not set for this event")
+		return nil, "", errors.New("prize_value_id is not set for this event")
 	}
 	if prizeTaken != nil && *prizeTaken {
-		return nil, errors.New("prize already taken")
+		return nil, "", errors.New("prize already taken")
 	}
 
 	prizeValue, err := s.prizeValueRepo.GetPrizeValueByID(ctx, *prizeValueID)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if prizeValue == nil {
-		return nil, errors.New("prize value not found")
+		return nil, "", errors.New("prize value not found")
 	}
 
 	prizeValueStr := prizeValue.Label
@@ -152,16 +195,149 @@ func (s *EventService) TakeEventPrize(ctx context.Context, userUUID string, even
 	}
 
 	if err := s.prizeRepo.CreatePrize(ctx, prize); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	updated, err := s.repo.UpdateUserEventPrizeTakenStatusIfNotTaken(ctx, userUUID, eventID, true)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if !updated {
-		return nil, errors.New("prize already taken")
+		return nil, "", errors.New("prize already taken")
 	}
 
-	return prize, nil
+	var achievementImageURL string
+	if prizeValueID != nil {
+		achievement, err := s.achievementRepo.GetAchievementByPrizeID(ctx, *prizeValueID)
+		if err != nil {
+			return nil, "", err
+		}
+		if achievement != nil {
+			_, _ = s.achievementRepo.AddUserAchievement(ctx, userUUID, achievement.ID, 1, 1)
+			if err := s.achievementRepo.UpdateUserAchievementClaimStatus(ctx, userUUID, achievement.ID, true); err != nil {
+				return nil, "", err
+			}
+			achievementImageURL = achievement.ImageURL
+		}
+	}
+
+	return prize, achievementImageURL, nil
+}
+
+func (s *EventService) GetUserEventProgress(ctx context.Context, userUUID string, eventID string) (*domain.EventProgressResponse, error) {
+	if userUUID == "" {
+		return nil, errors.New("user uuid is required")
+	}
+	if eventID == "" {
+		return nil, errors.New("event_id is required")
+	}
+	if s.repo == nil || s.prizeRepo == nil {
+		return nil, errors.New("event service dependencies are not configured")
+	}
+
+	event, err := s.repo.GetEventByID(ctx, eventID)
+	if err != nil {
+		return nil, err
+	}
+	if event == nil {
+		return nil, errors.New("event not found")
+	}
+	if !strings.Contains(strings.ToLower(event.Tags), "competition") {
+		return nil, errors.New("event is not a competition")
+	}
+
+	startMs := event.StartTime.UTC().UnixMilli()
+	endMs := event.Deadline.UTC().UnixMilli()
+
+	nowMs := time.Now().UTC().UnixMilli()
+	if nowMs < startMs || nowMs >= endMs {
+		return nil, errors.New("event is not active")
+	}
+
+	participating, err := s.repo.HasUserEvent(ctx, userUUID, eventID)
+	if err != nil {
+		return nil, err
+	}
+	if !participating {
+		return &domain.EventProgressResponse{
+			EventID:         eventID,
+			Participating:   false,
+			CollectedPoints: 0,
+		}, nil
+	}
+
+	points, err := s.prizeRepo.GetUserBetNetPoints(ctx, userUUID, startMs, endMs)
+	if err != nil {
+		return nil, err
+	}
+
+	return &domain.EventProgressResponse{
+		EventID:         eventID,
+		Participating:   true,
+		CollectedPoints: points,
+	}, nil
+}
+
+func (s *EventService) GetBestInEvent(ctx context.Context, eventID string) (*domain.EventLeaderResponse, error) {
+	if eventID == "" {
+		return nil, errors.New("event_id is required")
+	}
+	if s.repo == nil || s.prizeRepo == nil || s.prizeValueRepo == nil || s.achievementRepo == nil {
+		return nil, errors.New("event service dependencies are not configured")
+	}
+
+	event, err := s.repo.GetEventByID(ctx, eventID)
+	if err != nil {
+		return nil, err
+	}
+	if event == nil {
+		return nil, errors.New("event not found")
+	}
+	if !strings.Contains(strings.ToLower(event.Tags), "competition") {
+		return nil, errors.New("event is not a competition")
+	}
+
+	startMs := event.StartTime.UTC().UnixMilli()
+	endMs := event.Deadline.UTC().UnixMilli()
+
+	nowMs := time.Now().UTC().UnixMilli()
+	if nowMs < startMs || nowMs >= endMs {
+		return nil, errors.New("event is not active")
+	}
+
+	leaders, err := s.prizeRepo.GetBetPrizeLeaderboard(ctx, eventID, startMs, endMs, 1)
+	if err != nil {
+		return nil, err
+	}
+	if len(leaders) == 0 {
+		return &domain.EventLeaderResponse{
+			LeaderImage: "",
+			Points:      0,
+		}, nil
+	}
+
+	prizeValues, err := s.prizeValueRepo.GetPrizeValuesByEventID(ctx, eventID)
+	if err != nil {
+		return nil, err
+	}
+	if len(prizeValues) == 0 {
+		return nil, errors.New("prize values not found for event")
+	}
+	sort.Slice(prizeValues, func(i, j int) bool {
+		return prizeValues[i].Value > prizeValues[j].Value
+	})
+
+	var leaderImage string
+	achievement, err := s.achievementRepo.GetAchievementByPrizeID(ctx, prizeValues[0].ID)
+	if err != nil {
+		return nil, err
+	}
+	if achievement != nil {
+		leaderImage = achievement.ImageURL
+	}
+
+	return &domain.EventLeaderResponse{
+		LeaderImage: leaderImage,
+		Points:      leaders[0].NetPoints,
+	}, nil
 }

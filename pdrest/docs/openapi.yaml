@@ -974,6 +974,72 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
+  /user/event_progress:
+    post:
+      summary: Get user event progress
+      tags:
+        - User
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - eventId
+              properties:
+                eventId:
+                  type: string
+                  description: Event id to check progress
+      responses:
+        '200':
+          description: Event progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventProgressResponse'
+        '400':
+          description: Invalid request
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /user/best_in_event:
+    post:
+      summary: Get current leader in event
+      tags:
+        - User
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - eventId
+              properties:
+                eventId:
+                  type: string
+                  description: Event id to check current leader
+      responses:
+        '200':
+          description: Current event leader
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventLeaderResponse'
+        '400':
+          description: Invalid request
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
   /user/take_event_prize:
     post:
       summary: Take event prize
@@ -1010,6 +1076,8 @@ paths:
                   prize_value_id:
                     type: integer
                   eventId:
+                    type: string
+                  image_url:
                     type: string
         '400':
           description: Invalid request or prize unavailable
@@ -1426,6 +1494,9 @@ components:
           type: string
         desc:
           type: string
+        startTime:
+          type: string
+          format: date-time
         deadline:
           type: string
           format: date-time
@@ -1583,6 +1654,27 @@ components:
           items:
             $ref: '#/components/schemas/UserEvent'
 
+    EventProgressResponse:
+      type: object
+      properties:
+        eventId:
+          type: string
+        participating:
+          type: boolean
+        collectedPoints:
+          type: integer
+          format: int64
+
+    EventLeaderResponse:
+      type: object
+      properties:
+        leader_image:
+          type: string
+          nullable: true
+        points:
+          type: integer
+          format: int64
+
     UserEvent:
       type: object
       properties:
@@ -1595,6 +1687,9 @@ components:
           type: string
         desc:
           type: string
+        startTime:
+          type: string
+          format: date-time
         deadline:
           type: string
           format: date-time
@@ -1616,6 +1711,10 @@ components:
           type: boolean
           nullable: true
           description: NULL means unknown prize status
+        prizeDesc:
+          type: string
+          nullable: true
+          description: Prize description or label for the event (if assigned)
         prizeTakenStatus:
           type: boolean
           description: Whether the prize was already taken

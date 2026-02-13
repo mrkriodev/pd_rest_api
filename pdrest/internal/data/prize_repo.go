@@ -15,6 +15,8 @@ type PrizeRepository interface {
 	GetPrizeByID(ctx context.Context, id int) (*domain.Prize, error)
 	GetPrizesByUserID(ctx context.Context, userID string) ([]domain.Prize, error)
 	GetPrizesByPreauthTokenID(ctx context.Context, preauthTokenID int) ([]domain.Prize, error)
+	GetBetPrizeLeaderboard(ctx context.Context, eventID string, startMs, endMs int64, limit int) ([]domain.BetPrizeLeaderboardEntry, error)
+	GetUserBetNetPoints(ctx context.Context, userUUID string, startMs, endMs int64) (int64, error)
 }
 
 // PostgresPrizeRepository implements PrizeRepository with PostgreSQL.
@@ -198,6 +200,85 @@ func (r *PostgresPrizeRepository) GetPrizesByPreauthTokenID(ctx context.Context,
 	return prizes, nil
 }
 
+func (r *PostgresPrizeRepository) GetBetPrizeLeaderboard(ctx context.Context, eventID string, startMs, endMs int64, limit int) ([]domain.BetPrizeLeaderboardEntry, error) {
+	if eventID == "" {
+		return nil, fmt.Errorf("event_id is required")
+	}
+	if limit <= 0 {
+		limit = 3
+	}
+
+	query := `
+		SELECT gp.user_uuid::text AS user_uuid,
+		       COUNT(*) FILTER (WHERE gp.prize_type ILIKE 'bet%win%') AS win_count,
+		       COUNT(*) FILTER (WHERE gp.prize_type ILIKE 'bet%loss%') AS loss_count,
+		       COALESCE(SUM(
+		           CASE
+		               WHEN gp.prize_type ILIKE 'bet%loss%' THEN -pv.value
+		               ELSE pv.value
+		           END
+		       ), 0)::BIGINT AS net_points
+		FROM got_prizes gp
+		JOIN prize_values pv ON pv.id = gp.prize_value_id
+		JOIN user_events ue ON ue.user_uuid = gp.user_uuid AND ue.event_id = $1
+		WHERE gp.awarded_at >= $2
+		  AND gp.awarded_at < $3
+		  AND gp.prize_type ILIKE 'bet%'
+		GROUP BY gp.user_uuid
+		ORDER BY net_points DESC, win_count DESC, user_uuid ASC
+		LIMIT $4
+	`
+
+	rows, err := r.pool.Query(ctx, query, eventID, startMs, endMs, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get bet prize leaderboard: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []domain.BetPrizeLeaderboardEntry
+	for rows.Next() {
+		var entry domain.BetPrizeLeaderboardEntry
+		if err := rows.Scan(&entry.UserUUID, &entry.WinCount, &entry.LossCount, &entry.NetPoints); err != nil {
+			return nil, fmt.Errorf("failed to scan bet prize leaderboard entry: %w", err)
+		}
+		entries = append(entries, entry)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating bet prize leaderboard rows: %w", err)
+	}
+
+	return entries, nil
+}
+
+func (r *PostgresPrizeRepository) GetUserBetNetPoints(ctx context.Context, userUUID string, startMs, endMs int64) (int64, error) {
+	if userUUID == "" {
+		return 0, fmt.Errorf("user_uuid is required")
+	}
+
+	query := `
+		SELECT COALESCE(SUM(
+			CASE
+				WHEN gp.prize_type ILIKE 'bet%loss%' THEN -pv.value
+				ELSE pv.value
+			END
+		), 0)::BIGINT AS net_points
+		FROM got_prizes gp
+		JOIN prize_values pv ON pv.id = gp.prize_value_id
+		WHERE gp.user_uuid = $1
+		  AND gp.awarded_at >= $2
+		  AND gp.awarded_at < $3
+		  AND gp.prize_type ILIKE 'bet%'
+	`
+
+	var netPoints int64
+	if err := r.pool.QueryRow(ctx, query, userUUID, startMs, endMs).Scan(&netPoints); err != nil {
+		return 0, fmt.Errorf("failed to get user bet net points: %w", err)
+	}
+
+	return netPoints, nil
+}
+
 // InMemoryPrizeRepository returns empty results (used when DB is unavailable).
 type InMemoryPrizeRepository struct{}
 
@@ -219,4 +300,12 @@ func (r *InMemoryPrizeRepository) GetPrizesByUserID(ctx context.Context, userID 
 
 func (r *InMemoryPrizeRepository) GetPrizesByPreauthTokenID(ctx context.Context, preauthTokenID int) ([]domain.Prize, error) {
 	return []domain.Prize{}, nil
+}
+
+func (r *InMemoryPrizeRepository) GetBetPrizeLeaderboard(ctx context.Context, eventID string, startMs, endMs int64, limit int) ([]domain.BetPrizeLeaderboardEntry, error) {
+	return []domain.BetPrizeLeaderboardEntry{}, nil
+}
+
+func (r *InMemoryPrizeRepository) GetUserBetNetPoints(ctx context.Context, userUUID string, startMs, endMs int64) (int64, error) {
+	return 0, nil
 }

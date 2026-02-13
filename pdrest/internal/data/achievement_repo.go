@@ -16,6 +16,7 @@ type AchievementRepository interface {
 	GetAllAchievements(ctx context.Context) ([]domain.Achievement, error)
 	GetUserAchievements(ctx context.Context, userUUID string) ([]domain.UserAchievementEntry, error)
 	GetAchievementByID(ctx context.Context, achievementID string) (*domain.Achievement, error)
+	GetAchievementByPrizeID(ctx context.Context, prizeID int) (*domain.Achievement, error)
 	GetUserAchievementStatus(ctx context.Context, userUUID string, achievementID string) (*domain.UserAchievementStatus, error)
 	AddUserAchievement(ctx context.Context, userUUID string, achievementID string, stepsGot int, needSteps int) (bool, error)
 	UpdateUserAchievementClaimStatus(ctx context.Context, userUUID string, achievementID string, claimed bool) error
@@ -179,6 +180,35 @@ func (r *PostgresAchievementRepository) GetAchievementByID(ctx context.Context, 
 	return &achievement, nil
 }
 
+func (r *PostgresAchievementRepository) GetAchievementByPrizeID(ctx context.Context, prizeID int) (*domain.Achievement, error) {
+	query := `
+		SELECT id, badge, title, image_url, desc_text, tags, prize_id, steps, step_desc
+		FROM achievements
+		WHERE prize_id = $1
+		LIMIT 1
+	`
+
+	var achievement domain.Achievement
+	if err := r.pool.QueryRow(ctx, query, prizeID).Scan(
+		&achievement.ID,
+		&achievement.Badge,
+		&achievement.Title,
+		&achievement.ImageURL,
+		&achievement.Desc,
+		&achievement.Tags,
+		&achievement.PrizeID,
+		&achievement.Steps,
+		&achievement.StepDesc,
+	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get achievement by prize id: %w", err)
+	}
+
+	return &achievement, nil
+}
+
 func (r *PostgresAchievementRepository) GetUserAchievementStatus(ctx context.Context, userUUID string, achievementID string) (*domain.UserAchievementStatus, error) {
 	query := `
 		SELECT user_uuid::text, achievement_id, steps_got, need_steps, claimed_status
@@ -263,6 +293,10 @@ func (r *InMemoryAchievementRepository) GetUserAchievements(ctx context.Context,
 }
 
 func (r *InMemoryAchievementRepository) GetAchievementByID(ctx context.Context, achievementID string) (*domain.Achievement, error) {
+	return nil, fmt.Errorf("achievement retrieval requires database connection")
+}
+
+func (r *InMemoryAchievementRepository) GetAchievementByPrizeID(ctx context.Context, prizeID int) (*domain.Achievement, error) {
 	return nil, fmt.Errorf("achievement retrieval requires database connection")
 }
 
