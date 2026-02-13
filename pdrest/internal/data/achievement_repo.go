@@ -21,6 +21,7 @@ type AchievementRepository interface {
 	AddUserAchievement(ctx context.Context, userUUID string, achievementID string, stepsGot int, needSteps int) (bool, error)
 	UpdateUserAchievementClaimStatus(ctx context.Context, userUUID string, achievementID string, claimed bool) error
 	UpdateUserAchievementNeedSteps(ctx context.Context, userUUID string, achievementID string, needSteps int) error
+	UpsertUserAchievementProgress(ctx context.Context, userUUID string, achievementID string, stepsGot int, needSteps int, claimed bool) error
 }
 
 // PostgresAchievementRepository implements AchievementRepository with PostgreSQL.
@@ -277,41 +278,19 @@ func (r *PostgresAchievementRepository) UpdateUserAchievementNeedSteps(ctx conte
 	return nil
 }
 
-// InMemoryAchievementRepository returns empty results (used when DB is unavailable).
-type InMemoryAchievementRepository struct{}
+func (r *PostgresAchievementRepository) UpsertUserAchievementProgress(ctx context.Context, userUUID string, achievementID string, stepsGot int, needSteps int, claimed bool) error {
+	query := `
+		INSERT INTO user_achievements (user_uuid, achievement_id, steps_got, need_steps, claimed_status)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (user_uuid, achievement_id)
+		DO UPDATE SET steps_got = EXCLUDED.steps_got,
+			need_steps = EXCLUDED.need_steps,
+			claimed_status = EXCLUDED.claimed_status
+	`
 
-func NewInMemoryAchievementRepository() *InMemoryAchievementRepository {
-	return &InMemoryAchievementRepository{}
-}
-
-func (r *InMemoryAchievementRepository) GetAllAchievements(ctx context.Context) ([]domain.Achievement, error) {
-	return []domain.Achievement{}, nil
-}
-
-func (r *InMemoryAchievementRepository) GetUserAchievements(ctx context.Context, userUUID string) ([]domain.UserAchievementEntry, error) {
-	return []domain.UserAchievementEntry{}, nil
-}
-
-func (r *InMemoryAchievementRepository) GetAchievementByID(ctx context.Context, achievementID string) (*domain.Achievement, error) {
-	return nil, fmt.Errorf("achievement retrieval requires database connection")
-}
-
-func (r *InMemoryAchievementRepository) GetAchievementByPrizeID(ctx context.Context, prizeID int) (*domain.Achievement, error) {
-	return nil, fmt.Errorf("achievement retrieval requires database connection")
-}
-
-func (r *InMemoryAchievementRepository) GetUserAchievementStatus(ctx context.Context, userUUID string, achievementID string) (*domain.UserAchievementStatus, error) {
-	return nil, fmt.Errorf("user achievement retrieval requires database connection")
-}
-
-func (r *InMemoryAchievementRepository) AddUserAchievement(ctx context.Context, userUUID string, achievementID string, stepsGot int, needSteps int) (bool, error) {
-	return false, fmt.Errorf("user achievement insert requires database connection")
-}
-
-func (r *InMemoryAchievementRepository) UpdateUserAchievementClaimStatus(ctx context.Context, userUUID string, achievementID string, claimed bool) error {
-	return fmt.Errorf("user achievement update requires database connection")
-}
-
-func (r *InMemoryAchievementRepository) UpdateUserAchievementNeedSteps(ctx context.Context, userUUID string, achievementID string, needSteps int) error {
-	return fmt.Errorf("user achievement update requires database connection")
+	_, err := r.pool.Exec(ctx, query, userUUID, achievementID, stepsGot, needSteps, claimed)
+	if err != nil {
+		return fmt.Errorf("failed to upsert user achievement progress: %w", err)
+	}
+	return nil
 }

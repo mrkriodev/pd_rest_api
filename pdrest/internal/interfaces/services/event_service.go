@@ -213,8 +213,7 @@ func (s *EventService) TakeEventPrize(ctx context.Context, userUUID string, even
 			return nil, "", err
 		}
 		if achievement != nil {
-			_, _ = s.achievementRepo.AddUserAchievement(ctx, userUUID, achievement.ID, 1, 1)
-			if err := s.achievementRepo.UpdateUserAchievementClaimStatus(ctx, userUUID, achievement.ID, true); err != nil {
+			if err := s.achievementRepo.UpsertUserAchievementProgress(ctx, userUUID, achievement.ID, 1, 1, true); err != nil {
 				return nil, "", err
 			}
 			achievementImageURL = achievement.ImageURL
