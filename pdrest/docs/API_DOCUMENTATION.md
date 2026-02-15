@@ -712,6 +712,7 @@ Get roulette status for a roulette config.
 **Headers:**
 - `Authorization: Bearer <token>` (optional for roulette_id = 1; required for roulette_id != 1)
 - `X-SESSION-ID` (required only when roulette_id = 1 AND no Authorization header AND no preauth_token)
+- `X-Forwarded-For` or `X-Real-IP` (required only when roulette_id = 1 AND preauth_token is not provided)
 
 **Response:**
 ```json
@@ -720,16 +721,18 @@ Get roulette status for a roulette config.
   "can_spin": true,
   "remaining_spins": 3,
   "prize_taken": false,
-  "roulette": {...}
+  "roulette": {...},
+  "preauth_token": "token_here"
 }
 ```
+`preauth_token` is returned only when the Authorization header is provided.
 
 #### POST /api/roulette/spin
 Perform a spin using preauth token.
 
 **Headers:**
-- `Authorization: Bearer <token>` (required for roulette_id != 1; optional for roulette_id = 1; if provided, preauth token is created/linked to this user)
-- `X-Preauth-Token` (optional)
+- `Authorization: Bearer <token>` (required for roulette_id != 1; optional for roulette_id = 1)
+- `X-Preauth-Token` (required when Authorization header is provided)
 - `X-SESSION-ID` (required only when roulette_id = 1 AND no Authorization header AND no preauth_token)
 - `X-Forwarded-For` or `X-Real-IP` (required only when roulette_id = 1 AND preauth_token is not provided)
 
@@ -754,13 +757,15 @@ Perform a spin using preauth token.
 Take prize after completing all spins.
 
 **Headers:**
-- `Authorization: Bearer <token>` (required for roulette_id != 1; optional for roulette_id = 1; if provided, preauth_token is linked to this user)
-- `X-Preauth-Token` (optional)
-- `X-SESSION-ID` (optional, required if preauth_token is not provided)
+- `Authorization: Bearer <token>` (required for roulette_id != 1; optional for roulette_id = 1)
+- `X-Preauth-Token` (required when Authorization header is provided)
+- `X-SESSION-ID` (required only when roulette_id = 1 AND no Authorization header AND no preauth_token)
+- `X-Forwarded-For` or `X-Real-IP` (required only when roulette_id = 1 AND preauth_token is not provided)
 
 **Request Body:**
 ```json
 {
+  "roulette_id": 1,
   "preauth_token": "token_here"
 }
 ```

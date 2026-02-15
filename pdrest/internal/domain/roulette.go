@@ -88,4 +88,5 @@ type GetRouletteStatusResponse struct {
 	RemainingSpins int             `json:"remaining_spins"`
 	CanSpin        bool            `json:"can_spin"`
 	PrizeTaken     bool            `json:"prize_taken"`
+	PreauthToken   string          `json:"preauth_token,omitempty"`
 }
