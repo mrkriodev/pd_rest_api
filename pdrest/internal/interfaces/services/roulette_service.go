@@ -773,41 +773,6 @@ func (s *RouletteService) GetOrCreatePreauthTokenForUser(ctx context.Context, us
 	return token, nil
 }
 
-// EnsureRouletteForPreauthToken creates an empty roulette entry if none exists for the preauth token.
-func (s *RouletteService) EnsureRouletteForPreauthToken(ctx context.Context, preauthTokenStr string) error {
-	if preauthTokenStr == "" {
-		return errors.New("preauth_token is required")
-	}
-
-	preauthToken, err := s.repo.GetPreauthToken(ctx, preauthTokenStr)
-	if err != nil {
-		return fmt.Errorf("failed to get preauth token: %w", err)
-	}
-	if preauthToken == nil {
-		return errors.New("preauth token not found")
-	}
-
-	roulette, err := s.repo.GetRouletteByPreauthToken(ctx, preauthToken.ID)
-	if err != nil {
-		return fmt.Errorf("failed to get roulette: %w", err)
-	}
-	if roulette != nil {
-		return nil
-	}
-
-	roulette = &domain.Roulette{
-		RouletteConfigID: preauthToken.RouletteConfigID,
-		PreauthTokenID:   preauthToken.ID,
-		SpinNumber:       0,
-		PrizeTaken:       false,
-	}
-	if err := s.repo.CreateRoulette(ctx, roulette); err != nil {
-		return fmt.Errorf("failed to create roulette: %w", err)
-	}
-
-	return nil
-}
-
 // GetExistingPreauthToken returns preauth token derived from session_id + IP if it exists.
 func (s *RouletteService) GetExistingPreauthToken(ctx context.Context, sessionID, ipAddress string) (string, error) {
 	if sessionID == "" {
