@@ -17,6 +17,7 @@ type PrizeRepository interface {
 	GetPrizesByPreauthTokenID(ctx context.Context, preauthTokenID int) ([]domain.Prize, error)
 	GetBetPrizeLeaderboard(ctx context.Context, eventID string, startMs, endMs int64, limit int) ([]domain.BetPrizeLeaderboardEntry, error)
 	GetUserBetNetPoints(ctx context.Context, userUUID string, startMs, endMs int64) (int64, error)
+	UpdateMissingRouletteIDByPreauthToken(ctx context.Context, preauthTokenID int, rouletteID int) error
 }
 
 // PostgresPrizeRepository implements PrizeRepository with PostgreSQL.
@@ -279,6 +280,25 @@ func (r *PostgresPrizeRepository) GetUserBetNetPoints(ctx context.Context, userU
 	return netPoints, nil
 }
 
+func (r *PostgresPrizeRepository) UpdateMissingRouletteIDByPreauthToken(ctx context.Context, preauthTokenID int, rouletteID int) error {
+	if preauthTokenID <= 0 || rouletteID <= 0 {
+		return nil
+	}
+
+	query := `
+		UPDATE got_prizes
+		SET roulette_id = $2
+		WHERE preauth_token_id = $1
+		  AND roulette_id IS NULL
+	`
+
+	if _, err := r.pool.Exec(ctx, query, preauthTokenID, rouletteID); err != nil {
+		return fmt.Errorf("failed to update roulette_id for got_prizes: %w", err)
+	}
+
+	return nil
+}
+
 // InMemoryPrizeRepository returns empty results (used when DB is unavailable).
 type InMemoryPrizeRepository struct{}
 
@@ -308,4 +328,8 @@ func (r *InMemoryPrizeRepository) GetBetPrizeLeaderboard(ctx context.Context, ev
 
 func (r *InMemoryPrizeRepository) GetUserBetNetPoints(ctx context.Context, userUUID string, startMs, endMs int64) (int64, error) {
 	return 0, nil
+}
+
+func (r *InMemoryPrizeRepository) UpdateMissingRouletteIDByPreauthToken(ctx context.Context, preauthTokenID int, rouletteID int) error {
+	return nil
 }

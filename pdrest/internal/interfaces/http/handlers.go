@@ -1678,6 +1678,9 @@ func (h *HTTPHandler) GetRouletteStatus(c echo.Context) error {
 			if err != nil {
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			}
+			if err := h.rouletteService.EnsureRouletteForPreauthToken(ctx, preauthToken); err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
 			status, err := h.rouletteService.GetRouletteStatusByUser(ctx, userID, rouletteID)
 			if err != nil {
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -1747,6 +1750,9 @@ func (h *HTTPHandler) GetRouletteStatus(c echo.Context) error {
 
 		preauthToken, err := h.rouletteService.GetOrCreatePreauthTokenForUser(ctx, userID, rouletteID)
 		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		if err := h.rouletteService.EnsureRouletteForPreauthToken(ctx, preauthToken); err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
 		// Get roulette status by user UUID and roulette config ID
