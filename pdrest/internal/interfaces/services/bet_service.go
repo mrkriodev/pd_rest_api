@@ -172,7 +172,7 @@ func (s *BetService) ClaimBet(ctx context.Context, betID int, userUUID string) e
 	}
 
 	points := betPoints(bet)
-	description := fmt.Sprintf("Bet %d %s: %d points", bet.ID, determinePrizeStatus(bet), points)
+	description := fmt.Sprintf("Bet %d %s: %d points", bet.ID, determinePrizeStatus(*bet), points)
 	if err := s.ratingRepo.AddPoints(ctx, userUUID, points, nil, &bet.ID, description); err != nil {
 		return fmt.Errorf("failed to add bet points: %w", err)
 	}
