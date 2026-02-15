@@ -111,11 +111,10 @@ func (r *PostgresRatingRepository) GetGlobalRating(ctx context.Context, limit, o
 			}
 		}
 
-		if displayName != "" {
-			entry.UserName = &displayName
-		} else {
-			entry.UserID = &userUUID
+		if displayName == "" {
+			displayName = "Unknown"
 		}
+		entry.UserName = displayName
 		entry.Value = totalPoints
 		entries = append(entries, entry)
 	}

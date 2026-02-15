@@ -32,9 +32,8 @@ type UserAssets struct {
 
 // GlobalRatingEntry represents a single entry in the global rating.
 type GlobalRatingEntry struct {
-	UserID   *string `json:"userID,omitempty"`
-	UserName *string `json:"userName,omitempty"`
-	Value    int64   `json:"value"`
+	UserName string `json:"userName"`
+	Value    int64  `json:"value"`
 }
 
 // FriendRatingEntry represents aggregated points for a referred friend.
