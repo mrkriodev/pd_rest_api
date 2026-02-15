@@ -1869,6 +1869,8 @@ components:
         openTime:
           type: string
           format: date-time
+        claimedStatus:
+          type: boolean
 
     Bet:
       type: object

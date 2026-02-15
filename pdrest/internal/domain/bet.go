@@ -40,4 +40,5 @@ type BetStatusResponse struct {
 	OpenPrice  float64  `json:"openPrice"`
 	ClosePrice *float64 `json:"closePrice,omitempty"`
 	OpenTime   time.Time `json:"openTime"`
+	Claimed    bool      `json:"claimedStatus"`
 }

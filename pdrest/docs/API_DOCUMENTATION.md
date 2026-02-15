@@ -616,7 +616,8 @@ Get bet status with current price if timeframe has passed.
   "timeframe": 60,
   "openPrice": 2765,
   "closePrice": 2785,
-  "openTime": "2025-11-09T12:35:00Z"
+  "openTime": "2025-11-09T12:35:00Z",
+  "claimedStatus": false
 }
 ```
 
@@ -628,6 +629,7 @@ Get bet status with current price if timeframe has passed.
 - `openPrice` - Opening price
 - `closePrice` - Closing price (null if timeframe hasn't passed yet)
 - `openTime` - Opening time
+- `claimedStatus` - Whether the bet has been claimed
 
 **Note:** If the timeframe has passed and `closePrice` is not set, the system will automatically fetch the current price from Binance API and update the bet.
 
