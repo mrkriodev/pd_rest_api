@@ -2,8 +2,10 @@ package data
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"pdrest/internal/domain"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -53,11 +55,16 @@ func (r *PostgresRatingRepository) GetUserRatingTotals(ctx context.Context, user
 
 func (r *PostgresRatingRepository) GetGlobalRating(ctx context.Context, limit, offset int) ([]domain.GlobalRatingEntry, error) {
 	query := `
-		SELECT 
-			user_uuid::text AS user_uuid,
-			COALESCE(SUM(points), 0)::BIGINT AS total_points
-		FROM rating
-		GROUP BY user_uuid
+		SELECT
+			r.user_uuid::text AS user_uuid,
+			COALESCE(SUM(r.points), 0)::BIGINT AS total_points,
+			u.google_name,
+			u.telegram_username,
+			u.telegram_first_name,
+			u.telegram_last_name
+		FROM rating r
+		LEFT JOIN users u ON u.user_uuid = r.user_uuid
+		GROUP BY r.user_uuid, u.google_name, u.telegram_username, u.telegram_first_name, u.telegram_last_name
 		ORDER BY total_points DESC, user_uuid ASC
 		LIMIT $1 OFFSET $2
 	`
@@ -71,9 +78,43 @@ func (r *PostgresRatingRepository) GetGlobalRating(ctx context.Context, limit, o
 	var entries []domain.GlobalRatingEntry
 	for rows.Next() {
 		var entry domain.GlobalRatingEntry
-		if err := rows.Scan(&entry.UserID, &entry.Value); err != nil {
+		var userUUID string
+		var totalPoints int64
+		var googleName sql.NullString
+		var telegramUsername sql.NullString
+		var telegramFirstName sql.NullString
+		var telegramLastName sql.NullString
+
+		if err := rows.Scan(&userUUID, &totalPoints, &googleName, &telegramUsername, &telegramFirstName, &telegramLastName); err != nil {
 			return nil, fmt.Errorf("failed to scan global rating entry: %w", err)
 		}
+
+		displayName := ""
+		if googleName.Valid && googleName.String != "" {
+			displayName = googleName.String
+		} else if telegramUsername.Valid && telegramUsername.String != "" {
+			displayName = telegramUsername.String
+		} else {
+			first := ""
+			last := ""
+			if telegramFirstName.Valid {
+				first = telegramFirstName.String
+			}
+			if telegramLastName.Valid {
+				last = telegramLastName.String
+			}
+			combined := strings.TrimSpace(strings.TrimSpace(first) + " " + strings.TrimSpace(last))
+			if combined != "" {
+				displayName = combined
+			}
+		}
+
+		if displayName != "" {
+			entry.UserName = &displayName
+		} else {
+			entry.UserID = &userUUID
+		}
+		entry.Value = totalPoints
 		entries = append(entries, entry)
 	}
 

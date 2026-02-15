@@ -1614,7 +1614,12 @@ components:
       properties:
         userID:
           type: string
-          description: User ID (empty string if user is not authenticated)
+          description: User UUID (returned only when no display name exists)
+          nullable: true
+        userName:
+          type: string
+          description: Google or Telegram display name (if available)
+          nullable: true
         value:
           type: integer
           format: int64
