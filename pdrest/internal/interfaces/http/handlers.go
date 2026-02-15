@@ -1650,6 +1650,8 @@ func (h *HTTPHandler) GetRouletteStatus(c echo.Context) error {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for roulette"})
 	}
 
+	ctx := context.Background()
+
 	// Get roulette_id from query parameter
 	rouletteIDStr := c.QueryParam("roulette_id")
 	if rouletteIDStr == "" {
@@ -1672,7 +1674,9 @@ func (h *HTTPHandler) GetRouletteStatus(c echo.Context) error {
 				return c.JSON(http.StatusUnauthorized, map[string]string{"error": "authorization required for this roulette: " + err.Error()})
 			}
 
-			ctx := context.Background()
+			if _, err := h.rouletteService.GetOrCreatePreauthTokenForUser(ctx, userID, rouletteID); err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
 			status, err := h.rouletteService.GetRouletteStatusByUser(ctx, userID, rouletteID)
 			if err != nil {
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -1701,8 +1705,6 @@ func (h *HTTPHandler) GetRouletteStatus(c echo.Context) error {
 		if ipAddress == "" {
 			ipAddress = c.RealIP()
 		}
-		ctx := context.Background()
-
 		// If user exists for this session, return status by user UUID
 		if h.userService != nil && sessionID != "" {
 			user, err := h.userService.GetUserBySessionID(ctx, sessionID)
@@ -1741,8 +1743,10 @@ func (h *HTTPHandler) GetRouletteStatus(c echo.Context) error {
 		// Store userID in context for potential future use
 		c.Set("userID", userID)
 
+		if _, err := h.rouletteService.GetOrCreatePreauthTokenForUser(ctx, userID, rouletteID); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
 		// Get roulette status by user UUID and roulette config ID
-		ctx := context.Background()
 		status, err := h.rouletteService.GetRouletteStatusByUser(ctx, userID, rouletteID)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -1752,7 +1756,6 @@ func (h *HTTPHandler) GetRouletteStatus(c echo.Context) error {
 	}
 
 	// For roulette_id = 1, use preauth token
-	ctx := context.Background()
 	status, err := h.rouletteService.GetRouletteStatus(ctx, preauthToken)
 	if err != nil {
 		if strings.Contains(err.Error(), "invalid") || strings.Contains(err.Error(), "expired") {
@@ -1881,6 +1884,10 @@ func (h *HTTPHandler) Spin(c echo.Context) error {
 		c.Set("userID", userID)
 	}
 
+	ctx := context.Background()
+	// Pass Authorization header for event-based roulette auth enforcement
+	ctx = context.WithValue(ctx, services.ContextKeyAuthHeader, authHeader)
+
 	// Get preauth_token from header, query, or body (optional)
 	// Priority: header > query > body
 	preauthToken := c.Request().Header.Get("X-Preauth-Token")
@@ -1909,9 +1916,14 @@ func (h *HTTPHandler) Spin(c echo.Context) error {
 		ipAddress = c.RealIP()
 	}
 
-	ctx := context.Background()
-	// Pass Authorization header for event-based roulette auth enforcement
-	ctx = context.WithValue(ctx, services.ContextKeyAuthHeader, authHeader)
+	// If JWT is provided and no preauth token exists, create/get one by user UUID
+	if authUserID != "" && preauthToken == "" {
+		token, err := h.rouletteService.GetOrCreatePreauthTokenForUser(ctx, authUserID, req.RouletteID)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		preauthToken = token
+	}
 
 	// Pass session_id and IP for preauth token generation if needed
 	if sessionID != "" {

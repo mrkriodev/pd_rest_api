@@ -23,6 +23,7 @@ type RouletteRepository interface {
 	CreatePreauthToken(ctx context.Context, token *domain.RoulettePreauthToken) error
 	GetPreauthToken(ctx context.Context, token string) (*domain.RoulettePreauthToken, error)
 	GetPreauthTokenByUserUUID(ctx context.Context, userUUID string) (*domain.RoulettePreauthToken, error)
+	GetPreauthTokenByUserUUIDAndConfig(ctx context.Context, userUUID string, rouletteConfigID int) (*domain.RoulettePreauthToken, error)
 	UpdatePreauthTokenUserUUID(ctx context.Context, token string, userUUID string) error
 	MarkPreauthTokenAsUsed(ctx context.Context, tokenID int) error
 	ValidatePreauthToken(ctx context.Context, token string) (*domain.RoulettePreauthToken, error)
@@ -252,6 +253,46 @@ func (r *PostgresRouletteRepository) GetPreauthTokenByUserUUID(ctx context.Conte
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to get preauth token by user_uuid: %w", err)
+	}
+
+	preauthToken.UserUUID = userUUIDVal
+	return &preauthToken, nil
+}
+
+// GetPreauthTokenByUserUUIDAndConfig retrieves the latest preauth token linked to a user UUID and roulette config.
+func (r *PostgresRouletteRepository) GetPreauthTokenByUserUUIDAndConfig(ctx context.Context, userUUID string, rouletteConfigID int) (*domain.RoulettePreauthToken, error) {
+	if userUUID == "" {
+		return nil, fmt.Errorf("user_uuid is required")
+	}
+	if rouletteConfigID <= 0 {
+		return nil, fmt.Errorf("roulette_config_id is required")
+	}
+
+	query := `
+		SELECT id, token, user_uuid, roulette_config_id, is_used, expires_at, created_at
+		FROM roulette_preauth_token
+		WHERE user_uuid = $1 AND roulette_config_id = $2
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+
+	var preauthToken domain.RoulettePreauthToken
+	var userUUIDVal *string
+
+	err := r.pool.QueryRow(ctx, query, userUUID, rouletteConfigID).Scan(
+		&preauthToken.ID,
+		&preauthToken.Token,
+		&userUUIDVal,
+		&preauthToken.RouletteConfigID,
+		&preauthToken.IsUsed,
+		&preauthToken.ExpiresAt,
+		&preauthToken.CreatedAt,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get preauth token by user_uuid and config: %w", err)
 	}
 
 	preauthToken.UserUUID = userUUIDVal

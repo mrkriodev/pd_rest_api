@@ -727,6 +727,49 @@ func (s *RouletteService) GetPreauthToken(ctx context.Context, sessionID, ipAddr
 	return token, nil
 }
 
+// GetOrCreatePreauthTokenForUser returns a preauth token linked to a user and roulette config.
+// If none exists, it creates a new one without requiring session_id or IP.
+func (s *RouletteService) GetOrCreatePreauthTokenForUser(ctx context.Context, userUUID string, rouletteConfigID int) (string, error) {
+	if userUUID == "" {
+		return "", errors.New("user_uuid is required")
+	}
+	if rouletteConfigID <= 0 {
+		return "", errors.New("roulette_config_id is required")
+	}
+
+	existingToken, err := s.repo.GetPreauthTokenByUserUUIDAndConfig(ctx, userUUID, rouletteConfigID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get preauth token by user: %w", err)
+	}
+	if existingToken != nil {
+		return existingToken.Token, nil
+	}
+
+	config, err := s.repo.GetRouletteConfigByID(ctx, rouletteConfigID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get roulette config: %w", err)
+	}
+	if config == nil || !config.IsActive {
+		return "", errors.New("roulette config not found or inactive")
+	}
+
+	token := generateTokenFromUserUUID(userUUID, rouletteConfigID)
+	expiresAt := time.Now().Add(10 * 365 * 24 * time.Hour).UnixMilli()
+	preauthToken := &domain.RoulettePreauthToken{
+		Token:            token,
+		UserUUID:         &userUUID,
+		RouletteConfigID: config.ID,
+		IsUsed:           false,
+		ExpiresAt:        expiresAt,
+	}
+
+	if err := s.repo.CreatePreauthToken(ctx, preauthToken); err != nil {
+		return "", fmt.Errorf("failed to create preauth token: %w", err)
+	}
+
+	return token, nil
+}
+
 // GetExistingPreauthToken returns preauth token derived from session_id + IP if it exists.
 func (s *RouletteService) GetExistingPreauthToken(ctx context.Context, sessionID, ipAddress string) (string, error) {
 	if sessionID == "" {
@@ -826,6 +869,13 @@ func generateTokenFromSessionAndIP(sessionID, ipAddress string) string {
 	hash := sha256.Sum256([]byte(data))
 
 	// Convert to hex string (64 characters)
+	return hex.EncodeToString(hash[:])
+}
+
+// generateTokenFromUserUUID generates a random-ish token tied to a user and roulette config.
+func generateTokenFromUserUUID(userUUID string, rouletteConfigID int) string {
+	data := fmt.Sprintf("%s:%d:%d:%d", userUUID, rouletteConfigID, time.Now().UnixNano(), rand.Int63())
+	hash := sha256.Sum256([]byte(data))
 	return hex.EncodeToString(hash[:])
 }
 
