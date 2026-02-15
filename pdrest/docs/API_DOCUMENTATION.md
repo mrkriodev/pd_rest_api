@@ -703,18 +703,23 @@ Get unfinished bets (open bets or closed but unclaimed) for a user.
 ### Roulette Endpoints
 
 #### GET /api/roulette/status
-Get roulette status by preauth token.
+Get roulette status for a roulette config.
 
-**Query Parameters or Headers:**
-- `preauth_token` (required) - Preauth token (query parameter or X-Preauth-Token header)
+**Query Parameters:**
+- `roulette_id` (required) - Roulette config ID
+- `preauth_token` (optional) - Preauth token (query parameter or X-Preauth-Token header)
+
+**Headers:**
+- `Authorization: Bearer <token>` (optional for roulette_id = 1; required for roulette_id != 1)
+- `X-SESSION-ID` (required only when roulette_id = 1 AND no Authorization header AND no preauth_token)
 
 **Response:**
 ```json
 {
   "config": {...},
-  "canSpin": true,
-  "remainingSpins": 3,
-  "prizeTaken": false,
+  "can_spin": true,
+  "remaining_spins": 3,
+  "prize_taken": false,
   "roulette": {...}
 }
 ```
@@ -723,13 +728,15 @@ Get roulette status by preauth token.
 Perform a spin using preauth token.
 
 **Headers:**
-- `Authorization: Bearer <token>` (required for roulette_id != 1; optional for roulette_id = 1; if provided, preauth_token is linked to this user)
+- `Authorization: Bearer <token>` (required for roulette_id != 1; optional for roulette_id = 1; if provided, preauth token is created/linked to this user)
 - `X-Preauth-Token` (optional)
-- `X-SESSION-ID` (optional, required if preauth_token is not provided)
+- `X-SESSION-ID` (required only when roulette_id = 1 AND no Authorization header AND no preauth_token)
+- `X-Forwarded-For` or `X-Real-IP` (required only when roulette_id = 1 AND preauth_token is not provided)
 
 **Request Body:**
 ```json
 {
+  "roulette_id": 1,
   "preauth_token": "token_here"
 }
 ```

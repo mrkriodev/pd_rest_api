@@ -131,7 +131,7 @@ func main() {
 		rouletteService = services.NewRouletteService(rouletteRepo, repo, prizeRepo, prizeValueRepo, eventRepo, ratingRepo)
 		priceProvider := services.NewPriceProvider("") // Uses Binance API by default
 		betScheduler = services.NewBetScheduler(betRepo, priceProvider)
-		betService = services.NewBetService(betRepo, priceProvider, betScheduler)
+		betService = services.NewBetService(betRepo, priceProvider, betScheduler, ratingRepo)
 		achievementService = services.NewAchievementService(achievementRepo, prizeRepo, prizeValueRepo, ratingRepo, betRepo)
 	}
 

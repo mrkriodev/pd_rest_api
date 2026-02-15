@@ -14,13 +14,15 @@ type BetService struct {
 	repo          data.BetRepository
 	priceProvider *PriceProvider
 	scheduler     *BetScheduler
+	ratingRepo    data.RatingRepository
 }
 
-func NewBetService(r data.BetRepository, priceProvider *PriceProvider, scheduler *BetScheduler) *BetService {
+func NewBetService(r data.BetRepository, priceProvider *PriceProvider, scheduler *BetScheduler, ratingRepo data.RatingRepository) *BetService {
 	return &BetService{
 		repo:          r,
 		priceProvider: priceProvider,
 		scheduler:     scheduler,
+		ratingRepo:    ratingRepo,
 	}
 }
 
@@ -165,6 +167,16 @@ func (s *BetService) ClaimBet(ctx context.Context, betID int, userUUID string) e
 		return fmt.Errorf("failed to claim bet: %w", err)
 	}
 
+	if s.ratingRepo == nil {
+		return errors.New("rating repository is not configured")
+	}
+
+	points := betPoints(bet)
+	description := fmt.Sprintf("Bet %d %s: %d points", bet.ID, determinePrizeStatus(bet), points)
+	if err := s.ratingRepo.AddPoints(ctx, userUUID, points, nil, &bet.ID, description); err != nil {
+		return fmt.Errorf("failed to add bet points: %w", err)
+	}
+
 	return nil
 }
 
@@ -183,4 +195,12 @@ func determinePrizeStatus(bet domain.Bet) string {
 		}
 	}
 	return "lose"
+}
+
+func betPoints(bet *domain.Bet) int64 {
+	points := int64(math.Round(bet.Sum))
+	if determinePrizeStatus(*bet) == "win" {
+		return points
+	}
+	return -points
 }
