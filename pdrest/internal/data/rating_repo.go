@@ -18,6 +18,8 @@ type RatingRepository interface {
 	GetFriendsRatings(ctx context.Context, userUUID string, limit, offset int) ([]domain.FriendRatingEntry, error)
 	AddPoints(ctx context.Context, userUUID string, points int64, gotPrizeID *int, betID *int, description string) error
 	GetMaxCreatedAt(ctx context.Context, userUUID string) (*int64, error)
+	GetUserBetPointsInRange(ctx context.Context, userUUID string, startMs, endMs int64) (int64, error)
+	GetBetPointsLeaderboard(ctx context.Context, startMs, endMs int64, limit int) ([]domain.BetPrizeLeaderboardEntry, error)
 }
 
 // PostgresRatingRepository implements RatingRepository with PostgreSQL.
@@ -197,6 +199,63 @@ func (r *PostgresRatingRepository) GetMaxCreatedAt(ctx context.Context, userUUID
 	return maxCreatedAt, nil
 }
 
+func (r *PostgresRatingRepository) GetUserBetPointsInRange(ctx context.Context, userUUID string, startMs, endMs int64) (int64, error) {
+	query := `
+		SELECT COALESCE(SUM(points), 0)::BIGINT
+		FROM rating
+		WHERE user_uuid = $1
+		  AND bet_id IS NOT NULL
+		  AND got_prize_id IS NULL
+		  AND created_at >= $2
+		  AND created_at < $3
+	`
+
+	var total int64
+	if err := r.pool.QueryRow(ctx, query, userUUID, startMs, endMs).Scan(&total); err != nil {
+		return 0, fmt.Errorf("failed to get bet points in range: %w", err)
+	}
+
+	return total, nil
+}
+
+func (r *PostgresRatingRepository) GetBetPointsLeaderboard(ctx context.Context, startMs, endMs int64, limit int) ([]domain.BetPrizeLeaderboardEntry, error) {
+	query := `
+		SELECT
+			user_uuid::text AS user_uuid,
+			COALESCE(SUM(points), 0)::BIGINT AS net_points
+		FROM rating
+		WHERE bet_id IS NOT NULL
+		  AND got_prize_id IS NULL
+		  AND created_at >= $1
+		  AND created_at < $2
+		GROUP BY user_uuid
+		ORDER BY net_points DESC, user_uuid ASC
+		LIMIT $3
+	`
+
+	rows, err := r.pool.Query(ctx, query, startMs, endMs, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get bet points leaderboard: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []domain.BetPrizeLeaderboardEntry
+	for rows.Next() {
+		var entry domain.BetPrizeLeaderboardEntry
+		if err := rows.Scan(&entry.UserUUID, &entry.NetPoints); err != nil {
+			return nil, fmt.Errorf("failed to scan bet points leaderboard: %w", err)
+		}
+		entry.WinCount = 0
+		entry.LossCount = 0
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating bet points leaderboard rows: %w", err)
+	}
+
+	return entries, nil
+}
+
 // InMemoryRatingRepository returns zeroed totals (used when DB is unavailable).
 type InMemoryRatingRepository struct{}
 
@@ -222,4 +281,12 @@ func (r *InMemoryRatingRepository) AddPoints(ctx context.Context, userUUID strin
 
 func (r *InMemoryRatingRepository) GetMaxCreatedAt(ctx context.Context, userUUID string) (*int64, error) {
 	return nil, nil
+}
+
+func (r *InMemoryRatingRepository) GetUserBetPointsInRange(ctx context.Context, userUUID string, startMs, endMs int64) (int64, error) {
+	return 0, nil
+}
+
+func (r *InMemoryRatingRepository) GetBetPointsLeaderboard(ctx context.Context, startMs, endMs int64, limit int) ([]domain.BetPrizeLeaderboardEntry, error) {
+	return []domain.BetPrizeLeaderboardEntry{}, nil
 }

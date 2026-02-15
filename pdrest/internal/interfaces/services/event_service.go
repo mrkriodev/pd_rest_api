@@ -16,14 +16,16 @@ type EventService struct {
 	prizeRepo       data.PrizeRepository
 	prizeValueRepo  data.PrizeValueRepository
 	achievementRepo data.AchievementRepository
+	ratingRepo      data.RatingRepository
 }
 
-func NewEventService(r data.EventRepository, prizeRepo data.PrizeRepository, prizeValueRepo data.PrizeValueRepository, achievementRepo data.AchievementRepository) *EventService {
+func NewEventService(r data.EventRepository, prizeRepo data.PrizeRepository, prizeValueRepo data.PrizeValueRepository, achievementRepo data.AchievementRepository, ratingRepo data.RatingRepository) *EventService {
 	return &EventService{
 		repo:            r,
 		prizeRepo:       prizeRepo,
 		prizeValueRepo:  prizeValueRepo,
 		achievementRepo: achievementRepo,
+		ratingRepo:      ratingRepo,
 	}
 }
 
@@ -81,7 +83,7 @@ func (s *EventService) UpdateUserEventPrizeStatus(ctx context.Context, userUUID 
 	if eventID == "" {
 		return "", errors.New("event_id is required")
 	}
-	if s.repo == nil || s.prizeRepo == nil || s.prizeValueRepo == nil {
+	if s.repo == nil || s.ratingRepo == nil || s.prizeValueRepo == nil {
 		return "", errors.New("event service dependencies are not configured")
 	}
 
@@ -105,7 +107,7 @@ func (s *EventService) UpdateUserEventPrizeStatus(ctx context.Context, userUUID 
 		return "already_defined", nil
 	}
 
-	leaderboard, err := s.prizeRepo.GetBetPrizeLeaderboard(ctx, eventID, startMs, event.Deadline.UTC().UnixMilli(), 3)
+	leaderboard, err := s.ratingRepo.GetBetPointsLeaderboard(ctx, startMs, event.Deadline.UTC().UnixMilli(), 3)
 	if err != nil {
 		return "", err
 	}
@@ -230,7 +232,7 @@ func (s *EventService) GetUserEventProgress(ctx context.Context, userUUID string
 	if eventID == "" {
 		return nil, errors.New("event_id is required")
 	}
-	if s.repo == nil || s.prizeRepo == nil {
+	if s.repo == nil || s.ratingRepo == nil {
 		return nil, errors.New("event service dependencies are not configured")
 	}
 
@@ -249,8 +251,8 @@ func (s *EventService) GetUserEventProgress(ctx context.Context, userUUID string
 	endMs := event.Deadline.UTC().UnixMilli()
 
 	nowMs := time.Now().UTC().UnixMilli()
-	if nowMs < startMs || nowMs >= endMs {
-		return nil, errors.New("event is not active")
+	if nowMs < startMs {
+		return nil, errors.New("event is not started yet")
 	}
 
 	participating, err := s.repo.HasUserEvent(ctx, userUUID, eventID)
@@ -265,7 +267,7 @@ func (s *EventService) GetUserEventProgress(ctx context.Context, userUUID string
 		}, nil
 	}
 
-	points, err := s.prizeRepo.GetUserBetNetPoints(ctx, userUUID, startMs, endMs)
+	points, err := s.ratingRepo.GetUserBetPointsInRange(ctx, userUUID, startMs, endMs)
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +283,7 @@ func (s *EventService) GetBestInEvent(ctx context.Context, eventID string) (*dom
 	if eventID == "" {
 		return nil, errors.New("event_id is required")
 	}
-	if s.repo == nil || s.prizeRepo == nil || s.prizeValueRepo == nil || s.achievementRepo == nil {
+	if s.repo == nil || s.ratingRepo == nil || s.prizeValueRepo == nil || s.achievementRepo == nil {
 		return nil, errors.New("event service dependencies are not configured")
 	}
 
@@ -304,7 +306,7 @@ func (s *EventService) GetBestInEvent(ctx context.Context, eventID string) (*dom
 		return nil, errors.New("event is not active")
 	}
 
-	leaders, err := s.prizeRepo.GetBetPrizeLeaderboard(ctx, eventID, startMs, endMs, 1)
+	leaders, err := s.ratingRepo.GetBetPointsLeaderboard(ctx, startMs, endMs, 1)
 	if err != nil {
 		return nil, err
 	}
