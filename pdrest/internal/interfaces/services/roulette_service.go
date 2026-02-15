@@ -767,6 +767,11 @@ func (s *RouletteService) GetOrCreatePreauthTokenForUser(ctx context.Context, us
 	}
 
 	if err := s.repo.CreatePreauthToken(ctx, preauthToken); err != nil {
+		// If a token already exists for this user+config (race or prior link), return it
+		existingToken, getErr := s.repo.GetPreauthTokenByUserUUIDAndConfig(ctx, userUUID, rouletteConfigID)
+		if getErr == nil && existingToken != nil {
+			return existingToken.Token, nil
+		}
 		return "", fmt.Errorf("failed to create preauth token: %w", err)
 	}
 
@@ -794,6 +799,33 @@ func (s *RouletteService) GetExistingPreauthToken(ctx context.Context, sessionID
 
 // LinkPreauthTokenToUser links a preauth token to a user UUID (called after successful auth)
 func (s *RouletteService) LinkPreauthTokenToUser(ctx context.Context, preauthToken string, userUUID string) error {
+	if preauthToken == "" || userUUID == "" {
+		return errors.New("preauth_token and user_uuid are required")
+	}
+
+	token, err := s.repo.GetPreauthToken(ctx, preauthToken)
+	if err != nil {
+		return fmt.Errorf("failed to get preauth token: %w", err)
+	}
+	if token == nil {
+		return errors.New("preauth token not found")
+	}
+
+	if token.UserUUID != nil {
+		if *token.UserUUID == userUUID {
+			return nil
+		}
+		return errors.New("preauth token already linked to another user")
+	}
+
+	existingToken, err := s.repo.GetPreauthTokenByUserUUIDAndConfig(ctx, userUUID, token.RouletteConfigID)
+	if err != nil {
+		return fmt.Errorf("failed to check existing preauth token for user: %w", err)
+	}
+	if existingToken != nil && existingToken.Token != token.Token {
+		return errors.New("preauth token already exists for this user and roulette config")
+	}
+
 	return s.repo.UpdatePreauthTokenUserUUID(ctx, preauthToken, userUUID)
 }
 
@@ -892,6 +924,16 @@ func (s *RouletteService) CreatePreauthToken(ctx context.Context, rouletteType d
 	}
 	if config == nil || !config.IsActive {
 		return errors.New("roulette config not found or inactive")
+	}
+
+	if userUUID != nil && *userUUID != "" {
+		existingToken, err := s.repo.GetPreauthTokenByUserUUIDAndConfig(ctx, *userUUID, config.ID)
+		if err != nil {
+			return fmt.Errorf("failed to check existing preauth token for user: %w", err)
+		}
+		if existingToken != nil {
+			return errors.New("preauth token already exists for this user and roulette config")
+		}
 	}
 
 	// Create preauth token
