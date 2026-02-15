@@ -1,7 +1,7 @@
 INSERT INTO all_events (id, badge, title, desc_text, start_time, deadline, tags, reward, info, created_at, updated_at)
 VALUES (
     'best_of_the_week_15_02_2026',
-    'https://mrkriodev.github.io/mrkrio.github.io/data/events/event-weekly-3.png',
+    'Make predictions. Earn achivements',
     'Best of the Week',
     'Weekly competition for the best betting results.',
     1771113600000,
