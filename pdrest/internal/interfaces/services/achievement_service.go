@@ -70,6 +70,79 @@ func (s *AchievementService) GetUserAchievements(ctx context.Context, userUUID s
 	}, nil
 }
 
+func (s *AchievementService) GetUserAchievementByID(ctx context.Context, userUUID string, achievementID string) (*domain.UserAchievementResponse, error) {
+	if userUUID == "" {
+		return nil, errors.New("user uuid is required")
+	}
+	if achievementID == "" {
+		return nil, errors.New("achievement_id is required")
+	}
+	if s.repo == nil {
+		return nil, errors.New("achievement repository is not configured")
+	}
+
+	achievement, err := s.repo.GetUserAchievementByID(ctx, userUUID, achievementID)
+	if err != nil {
+		return nil, err
+	}
+	if achievement == nil {
+		return nil, errors.New("achievement not found")
+	}
+	if hasTag(achievement.Tags, "event") {
+		return nil, errors.New("achievement not found")
+	}
+
+	return &domain.UserAchievementResponse{
+		Achievement: *achievement,
+	}, nil
+}
+
+// CheckBetAchievements verifies bet-related achievements and returns newly created ids.
+func (s *AchievementService) CheckBetAchievements(ctx context.Context, userUUID string) ([]string, error) {
+	if userUUID == "" {
+		return nil, errors.New("user uuid is required")
+	}
+	if s.repo == nil || s.betRepo == nil {
+		return nil, errors.New("achievement service dependencies are not configured")
+	}
+
+	newAchievements := make([]string, 0)
+
+	// first_bet_success: any winning bet qualifies
+	hasWin, err := s.betRepo.HasWinningBet(ctx, userUUID)
+	if err != nil {
+		return nil, err
+	}
+	if hasWin {
+		achievementID := "first_bet_success"
+		status, err := s.repo.GetUserAchievementStatus(ctx, userUUID, achievementID)
+		if err != nil && !strings.Contains(err.Error(), "not found") {
+			return nil, err
+		}
+		if status == nil {
+			achievement, err := s.repo.GetAchievementByID(ctx, achievementID)
+			if err != nil {
+				return nil, err
+			}
+			if achievement != nil {
+				needSteps := achievement.Steps
+				if needSteps <= 0 {
+					needSteps = 1
+				}
+				created, err := s.repo.AddUserAchievement(ctx, userUUID, achievementID, needSteps, needSteps)
+				if err != nil {
+					return nil, err
+				}
+				if created {
+					newAchievements = append(newAchievements, achievementID)
+				}
+			}
+		}
+	}
+
+	return newAchievements, nil
+}
+
 func hasTag(tags string, target string) bool {
 	if tags == "" || target == "" {
 		return false

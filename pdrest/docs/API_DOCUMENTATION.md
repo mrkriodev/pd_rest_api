@@ -91,6 +91,32 @@ Get achievements earned by the authenticated user (requires JWT).
 
 If an achievement has no row in `user_achievements`, its `desc` will be an empty string and `stepsGot`/`needSteps` will be omitted.
 
+#### GET /api/user/achievement
+Get a single achievement by id for the authenticated user (requires JWT).
+
+**Query Parameters:**
+- `achievementId` (required)
+
+**Response:**
+```json
+{
+  "achievement": {
+    "id": "first_bet_success",
+    "badge": "First Bet",
+    "title": "First Successful Bet",
+    "imageUrl": "https://mrkriodev.github.io/mrkrio.github.io/data/1-bet-ach.svg",
+    "desc": "Awarded for the first successful bet.",
+    "tags": "bet",
+    "prizeDesc": "10 USDT",
+    "steps": 1,
+    "stepDesc": "Win your first bet",
+    "stepsGot": 1,
+    "needSteps": 1,
+    "claimedStatus": false
+  }
+}
+```
+
 #### GET /api/user/events
 Get user events plus available competitions (requires JWT).
 
@@ -195,7 +221,7 @@ Take event prize (requires JWT).
 }
 ```
 
-#### POST /api/user/claim_achovement_prize
+#### POST /api/user/claim_achievement_prize
 Claim a completed achievement and receive its prize (requires JWT).
 
 **Request Body:**
@@ -652,7 +678,8 @@ Claim bet result by bet ID.
 **Response:**
 ```json
 {
-  "status": "claimed"
+  "status": "claimed",
+  "newAchievementIds": ["first_bet_success"]
 }
 ```
 

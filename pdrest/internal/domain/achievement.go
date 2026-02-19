@@ -51,3 +51,8 @@ type AchievementsResponse struct {
 type UserAchievementsResponse struct {
 	Achievements []UserAchievementEntry `json:"achievements"`
 }
+
+// UserAchievementResponse represents the response for a single user achievement.
+type UserAchievementResponse struct {
+	Achievement UserAchievementEntry `json:"achievement"`
+}

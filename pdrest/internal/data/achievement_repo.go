@@ -15,6 +15,7 @@ import (
 type AchievementRepository interface {
 	GetAllAchievements(ctx context.Context) ([]domain.Achievement, error)
 	GetUserAchievements(ctx context.Context, userUUID string) ([]domain.UserAchievementEntry, error)
+	GetUserAchievementByID(ctx context.Context, userUUID string, achievementID string) (*domain.UserAchievementEntry, error)
 	GetAchievementByID(ctx context.Context, achievementID string) (*domain.Achievement, error)
 	GetAchievementByPrizeID(ctx context.Context, prizeID int) (*domain.Achievement, error)
 	GetUserAchievementStatus(ctx context.Context, userUUID string, achievementID string) (*domain.UserAchievementStatus, error)
@@ -151,6 +152,65 @@ func (r *PostgresAchievementRepository) GetUserAchievements(ctx context.Context,
 	}
 
 	return achievements, nil
+}
+
+func (r *PostgresAchievementRepository) GetUserAchievementByID(ctx context.Context, userUUID string, achievementID string) (*domain.UserAchievementEntry, error) {
+	query := `
+		SELECT a.id, a.badge, a.title, a.image_url,
+		       CASE WHEN ua.achievement_id IS NULL THEN '' ELSE a.desc_text END AS desc_text,
+		       a.tags,
+		       CASE WHEN a.prize_id IS NULL THEN NULL ELSE pv.label END AS prize_desc,
+		       a.steps, a.step_desc,
+		       CASE WHEN ua.achievement_id IS NULL THEN NULL ELSE ua.steps_got END AS steps_got,
+		       CASE WHEN ua.achievement_id IS NULL THEN NULL ELSE ua.need_steps END AS need_steps,
+		       COALESCE(ua.claimed_status, FALSE) AS claimed_status
+		FROM achievements a
+		LEFT JOIN user_achievements ua
+		       ON a.id = ua.achievement_id AND ua.user_uuid = $1
+		LEFT JOIN prize_values pv
+		       ON pv.id = a.prize_id
+		WHERE a.id = $2
+		LIMIT 1
+	`
+
+	var achievement domain.UserAchievementEntry
+	var prizeDesc sql.NullString
+	var stepsGot sql.NullInt32
+	var needSteps sql.NullInt32
+	if err := r.pool.QueryRow(ctx, query, userUUID, achievementID).Scan(
+		&achievement.ID,
+		&achievement.Badge,
+		&achievement.Title,
+		&achievement.ImageURL,
+		&achievement.Desc,
+		&achievement.Tags,
+		&prizeDesc,
+		&achievement.Steps,
+		&achievement.StepDesc,
+		&stepsGot,
+		&needSteps,
+		&achievement.ClaimedStatus,
+	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("achievement not found")
+		}
+		return nil, fmt.Errorf("failed to get user achievement: %w", err)
+	}
+
+	if prizeDesc.Valid {
+		value := prizeDesc.String
+		achievement.PrizeDesc = &value
+	}
+	if stepsGot.Valid {
+		value := int(stepsGot.Int32)
+		achievement.StepsGot = &value
+	}
+	if needSteps.Valid {
+		value := int(needSteps.Int32)
+		achievement.NeedSteps = &value
+	}
+
+	return &achievement, nil
 }
 
 func (r *PostgresAchievementRepository) GetAchievementByID(ctx context.Context, achievementID string) (*domain.Achievement, error) {

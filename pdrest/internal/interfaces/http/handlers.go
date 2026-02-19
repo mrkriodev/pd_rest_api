@@ -91,8 +91,9 @@ func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingServi
 	user.GET("/referral_link", h.UserReferralLink)
 	user.GET("/friends_ratings", h.UserFriendsRatings)
 	user.GET("/achievements", h.UserAchievements)
+	user.GET("/achievement", h.UserAchievementByID)
 	user.GET("/events", h.UserEvents)
-	user.POST("/claim_achovement_prize", h.ClaimAchievement)
+	user.POST("/claim_achievement_prize", h.ClaimAchievement)
 	user.POST("/update_achivement_satus", h.UpdateAchievementStatus)
 	user.POST("/take_part_on_event", h.TakePartOnEvent)
 	user.POST("/update_prise_status", h.UpdateUserEventPrizeStatus)
@@ -567,7 +568,19 @@ func (h *HTTPHandler) ClaimBet(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"status": "claimed"})
+	newAchievementIDs := []string{}
+	if h.achievementService != nil {
+		ids, err := h.achievementService.CheckBetAchievements(ctx, userUUID)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		newAchievementIDs = ids
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"status":            "claimed",
+		"newAchievementIds": newAchievementIDs,
+	})
 }
 
 func (h *HTTPHandler) UnfinishedBets(c echo.Context) error {
@@ -1347,6 +1360,34 @@ func (h *HTTPHandler) UserAchievements(c echo.Context) error {
 	ctx := context.Background()
 	result, err := h.achievementService.GetUserAchievements(ctx, userUUID)
 	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, result)
+}
+
+func (h *HTTPHandler) UserAchievementByID(c echo.Context) error {
+	if h.achievementService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for user achievements"})
+	}
+
+	// Get user UUID from context (set by JWT middleware)
+	userUUID, ok := c.Get("user_uuid").(string)
+	if !ok || userUUID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
+	achievementID := c.QueryParam("achievementId")
+	if achievementID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "achievementId is required"})
+	}
+
+	ctx := context.Background()
+	result, err := h.achievementService.GetUserAchievementByID(ctx, userUUID, achievementID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 

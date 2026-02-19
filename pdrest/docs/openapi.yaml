@@ -804,6 +804,42 @@ paths:
       responses:
         '200':
           description: User achievements
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserAchievementsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /user/achievement:
+    get:
+      summary: Get user achievement by id
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: achievementId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Achievement id to fetch
+      responses:
+        '200':
+          description: User achievement
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserAchievementResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /user/events:
     get:
@@ -824,7 +860,7 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
-  /user/claim_achovement_prize:
+  /user/claim_achievement_prize:
     post:
       summary: Claim completed achievement
       security:
@@ -1168,6 +1204,10 @@ paths:
                 properties:
                   status:
                     type: string
+                  newAchievementIds:
+                    type: array
+                    items:
+                      type: string
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1696,6 +1736,12 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/UserAchievement'
+
+    UserAchievementResponse:
+      type: object
+      properties:
+        achievement:
+          $ref: '#/components/schemas/UserAchievement'
 
     UserEventsResponse:
       type: object
