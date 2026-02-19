@@ -16,6 +16,7 @@ type BetRepository interface {
 	UpdateBetClosePrice(ctx context.Context, betID int, closePrice float64, closeTime time.Time) error
 	UpdateBetClaimStatus(ctx context.Context, betID int, userUUID string, claimed bool) error
 	GetWinningBetsByUser(ctx context.Context, userUUID string) ([]domain.Bet, error)
+	CountWinningBetsByUser(ctx context.Context, userUUID string) (int, error)
 	HasWinningBet(ctx context.Context, userUUID string) (bool, error)
 	GetClosedBetsByUser(ctx context.Context, userUUID string) ([]domain.Bet, error)
 	GetUnfinishedBetsByUser(ctx context.Context, userUUID string) ([]domain.Bet, error)
@@ -211,6 +212,26 @@ func (r *PostgresBetRepository) GetWinningBetsByUser(ctx context.Context, userUU
 	return bets, nil
 }
 
+func (r *PostgresBetRepository) CountWinningBetsByUser(ctx context.Context, userUUID string) (int, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM bets
+		WHERE user_uuid = $1
+		  AND close_price IS NOT NULL
+		  AND (
+			(side = 'pump' AND close_price > open_price) OR
+			(side = 'dump' AND close_price < open_price)
+		  )
+	`
+
+	var count int
+	if err := r.pool.QueryRow(ctx, query, userUUID).Scan(&count); err != nil {
+		return 0, fmt.Errorf("failed to count winning bets: %w", err)
+	}
+
+	return count, nil
+}
+
 func (r *PostgresBetRepository) HasWinningBet(ctx context.Context, userUUID string) (bool, error) {
 	query := `
 		SELECT EXISTS (
@@ -347,12 +368,6 @@ func (r *PostgresBetRepository) GetUnfinishedBetsByUser(ctx context.Context, use
 	return bets, nil
 }
 
-type InMemoryBetRepository struct{}
-
-func NewInMemoryBetRepository() *InMemoryBetRepository {
-	return &InMemoryBetRepository{}
-}
-
 func normalizeBetTimestamp(value time.Time) time.Time {
 	// Interpret timestamp-without-timezone as UTC without shifting wall clock.
 	return time.Date(
@@ -365,39 +380,4 @@ func normalizeBetTimestamp(value time.Time) time.Time {
 		value.Nanosecond(),
 		time.UTC,
 	)
-}
-
-func (r *InMemoryBetRepository) CreateBet(ctx context.Context, bet *domain.Bet) error {
-	// In-memory repository doesn't support bet creation
-	return fmt.Errorf("bet creation requires database connection")
-}
-
-func (r *InMemoryBetRepository) GetBetByID(ctx context.Context, betID int, userUUID string) (*domain.Bet, error) {
-	// In-memory repository doesn't support bet retrieval
-	return nil, fmt.Errorf("bet retrieval requires database connection")
-}
-
-func (r *InMemoryBetRepository) UpdateBetClosePrice(ctx context.Context, betID int, closePrice float64, closeTime time.Time) error {
-	// In-memory repository doesn't support bet updates
-	return fmt.Errorf("bet update requires database connection")
-}
-
-func (r *InMemoryBetRepository) UpdateBetClaimStatus(ctx context.Context, betID int, userUUID string, claimed bool) error {
-	return fmt.Errorf("bet update requires database connection")
-}
-
-func (r *InMemoryBetRepository) GetWinningBetsByUser(ctx context.Context, userUUID string) ([]domain.Bet, error) {
-	return []domain.Bet{}, nil
-}
-
-func (r *InMemoryBetRepository) HasWinningBet(ctx context.Context, userUUID string) (bool, error) {
-	return false, nil
-}
-
-func (r *InMemoryBetRepository) GetClosedBetsByUser(ctx context.Context, userUUID string) ([]domain.Bet, error) {
-	return []domain.Bet{}, nil
-}
-
-func (r *InMemoryBetRepository) GetUnfinishedBetsByUser(ctx context.Context, userUUID string) ([]domain.Bet, error) {
-	return []domain.Bet{}, nil
 }

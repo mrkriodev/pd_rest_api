@@ -108,35 +108,54 @@ func (s *AchievementService) CheckBetAchievements(ctx context.Context, userUUID 
 
 	newAchievements := make([]string, 0)
 
-	// first_bet_success: any winning bet qualifies
-	hasWin, err := s.betRepo.HasWinningBet(ctx, userUUID)
+	winCount, err := s.betRepo.CountWinningBetsByUser(ctx, userUUID)
 	if err != nil {
 		return nil, err
 	}
-	if hasWin {
-		achievementID := "first_bet_success"
+
+	achievementIDs := []string{
+		"first_bet_success",
+		"wins_10",
+		"wins_50",
+		"wins_100",
+		"wins_250",
+		"wins_500",
+		"wins_1000",
+		"wins_5000",
+		"wins_10000",
+	}
+
+	for _, achievementID := range achievementIDs {
 		status, err := s.repo.GetUserAchievementStatus(ctx, userUUID, achievementID)
 		if err != nil && !strings.Contains(err.Error(), "not found") {
 			return nil, err
 		}
-		if status == nil {
-			achievement, err := s.repo.GetAchievementByID(ctx, achievementID)
-			if err != nil {
-				return nil, err
-			}
-			if achievement != nil {
-				needSteps := achievement.Steps
-				if needSteps <= 0 {
-					needSteps = 1
-				}
-				created, err := s.repo.AddUserAchievement(ctx, userUUID, achievementID, needSteps, needSteps)
-				if err != nil {
-					return nil, err
-				}
-				if created {
-					newAchievements = append(newAchievements, achievementID)
-				}
-			}
+		if status != nil {
+			continue
+		}
+
+		achievement, err := s.repo.GetAchievementByID(ctx, achievementID)
+		if err != nil {
+			return nil, err
+		}
+		if achievement == nil {
+			continue
+		}
+
+		needSteps := achievement.Steps
+		if needSteps <= 0 {
+			return nil, errors.New("achievement has invalid steps")
+		}
+		if winCount < needSteps {
+			continue
+		}
+
+		created, err := s.repo.AddUserAchievement(ctx, userUUID, achievementID, needSteps, needSteps)
+		if err != nil {
+			return nil, err
+		}
+		if created {
+			newAchievements = append(newAchievements, achievementID)
 		}
 	}
 
@@ -183,6 +202,32 @@ func (s *AchievementService) UpdateAchievementStatus(ctx context.Context, userUU
 		needSteps := achievement.Steps
 		if needSteps <= 0 {
 			needSteps = 1
+		}
+
+		created, err := s.repo.AddUserAchievement(ctx, userUUID, achievementID, needSteps, needSteps)
+		if err != nil {
+			return "", err
+		}
+		if !created {
+			return "already_exists", nil
+		}
+		return "created", nil
+	case "wins_10", "wins_50", "wins_100", "wins_250", "wins_500", "wins_1000", "wins_5000", "wins_10000":
+		achievement, err := s.repo.GetAchievementByID(ctx, achievementID)
+		if err != nil {
+			return "", err
+		}
+		needSteps := achievement.Steps
+		if needSteps <= 0 {
+			return "", errors.New("achievement has invalid steps")
+		}
+
+		wins, err := s.betRepo.GetWinningBetsByUser(ctx, userUUID)
+		if err != nil {
+			return "", err
+		}
+		if len(wins) < needSteps {
+			return "not_completed", nil
 		}
 
 		created, err := s.repo.AddUserAchievement(ctx, userUUID, achievementID, needSteps, needSteps)
