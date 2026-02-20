@@ -558,7 +558,8 @@ func (h *HTTPHandler) ClaimBet(c echo.Context) error {
 	}
 
 	ctx := context.Background()
-	if err := h.betService.ClaimBet(ctx, req.BetID, userUUID); err != nil {
+	won, err := h.betService.ClaimBet(ctx, req.BetID, userUUID)
+	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
 		}
@@ -569,8 +570,8 @@ func (h *HTTPHandler) ClaimBet(c echo.Context) error {
 	}
 
 	newAchievementIDs := []string{}
-	if h.achievementService != nil {
-		ids, err := h.achievementService.CheckBetAchievements(ctx, userUUID)
+	if won && h.achievementService != nil {
+		ids, err := h.achievementService.UpdateWinAchievementsOnBet(ctx, userUUID)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}

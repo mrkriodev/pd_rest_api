@@ -149,36 +149,36 @@ func (s *BetService) GetUnfinishedBetsByUser(ctx context.Context, userUUID strin
 	return bets, nil
 }
 
-func (s *BetService) ClaimBet(ctx context.Context, betID int, userUUID string) error {
+func (s *BetService) ClaimBet(ctx context.Context, betID int, userUUID string) (bool, error) {
 	bet, err := s.repo.GetBetByID(ctx, betID, userUUID)
 	if err != nil {
-		return fmt.Errorf("failed to get bet: %w", err)
+		return false, fmt.Errorf("failed to get bet: %w", err)
 	}
 	if bet == nil {
-		return errors.New("bet not found")
+		return false, errors.New("bet not found")
 	}
 	if bet.ClosePrice == nil {
-		return errors.New("bet is not closed yet")
+		return false, errors.New("bet is not closed yet")
 	}
 	if bet.Claimed {
-		return errors.New("bet already claimed")
+		return false, errors.New("bet already claimed")
 	}
 
 	if err := s.repo.UpdateBetClaimStatus(ctx, betID, userUUID, true); err != nil {
-		return fmt.Errorf("failed to claim bet: %w", err)
+		return false, fmt.Errorf("failed to claim bet: %w", err)
 	}
 
 	if s.ratingRepo == nil {
-		return errors.New("rating repository is not configured")
+		return false, errors.New("rating repository is not configured")
 	}
 
 	points := betPoints(bet)
 	description := fmt.Sprintf("Bet %d %s: %d points", bet.ID, determinePrizeStatus(*bet), points)
 	if err := s.ratingRepo.AddPoints(ctx, userUUID, points, nil, &bet.ID, description); err != nil {
-		return fmt.Errorf("failed to add bet points: %w", err)
+		return false, fmt.Errorf("failed to add bet points: %w", err)
 	}
 
-	return nil
+	return determinePrizeStatus(*bet) == "win", nil
 }
 
 func determinePrizeStatus(bet domain.Bet) string {

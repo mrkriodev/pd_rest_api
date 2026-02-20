@@ -98,7 +98,7 @@ func (s *AchievementService) GetUserAchievementByID(ctx context.Context, userUUI
 }
 
 // CheckBetAchievements verifies bet-related achievements and returns newly created ids.
-func (s *AchievementService) CheckBetAchievements(ctx context.Context, userUUID string) ([]string, error) {
+func (s *AchievementService) UpdateWinAchievementsOnBet(ctx context.Context, userUUID string) ([]string, error) {
 	if userUUID == "" {
 		return nil, errors.New("user uuid is required")
 	}
@@ -107,11 +107,6 @@ func (s *AchievementService) CheckBetAchievements(ctx context.Context, userUUID 
 	}
 
 	newAchievements := make([]string, 0)
-
-	winCount, err := s.betRepo.CountWinningBetsByUser(ctx, userUUID)
-	if err != nil {
-		return nil, err
-	}
 
 	achievementIDs := []string{
 		"first_bet_success",
@@ -130,9 +125,6 @@ func (s *AchievementService) CheckBetAchievements(ctx context.Context, userUUID 
 		if err != nil && !strings.Contains(err.Error(), "not found") {
 			return nil, err
 		}
-		if status != nil {
-			continue
-		}
 
 		achievement, err := s.repo.GetAchievementByID(ctx, achievementID)
 		if err != nil {
@@ -146,16 +138,37 @@ func (s *AchievementService) CheckBetAchievements(ctx context.Context, userUUID 
 		if needSteps <= 0 {
 			return nil, errors.New("achievement has invalid steps")
 		}
-		if winCount < needSteps {
+
+		if status == nil {
+			stepsGot := 1
+			if stepsGot > needSteps {
+				stepsGot = needSteps
+			}
+			if err := s.repo.UpsertUserAchievementProgress(ctx, userUUID, achievementID, stepsGot, needSteps, false); err != nil {
+				return nil, err
+			}
+			newAchievements = append(newAchievements, achievementID)
 			continue
 		}
 
-		created, err := s.repo.AddUserAchievement(ctx, userUUID, achievementID, needSteps, needSteps)
-		if err != nil {
-			return nil, err
+		if status.ClaimedStatus {
+			continue
 		}
-		if created {
-			newAchievements = append(newAchievements, achievementID)
+
+		currentNeed := status.NeedSteps
+		if currentNeed <= 0 {
+			currentNeed = needSteps
+		}
+		if status.StepsGot >= currentNeed {
+			continue
+		}
+
+		nextSteps := status.StepsGot + 1
+		if nextSteps > currentNeed {
+			nextSteps = currentNeed
+		}
+		if err := s.repo.UpsertUserAchievementProgress(ctx, userUUID, achievementID, nextSteps, currentNeed, false); err != nil {
+			return nil, err
 		}
 	}
 
