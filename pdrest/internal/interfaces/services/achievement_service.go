@@ -29,17 +29,20 @@ func NewAchievementService(r data.AchievementRepository, prizeRepo data.PrizeRep
 	}
 }
 
-func (s *AchievementService) GetAvailableAchievements(ctx context.Context) (*domain.AchievementsResponse, error) {
+func (s *AchievementService) GetAllAchievementsForUser(ctx context.Context, userUUID string) (*domain.AllAchievementsResponse, error) {
+	if userUUID == "" {
+		return nil, errors.New("user uuid is required")
+	}
 	if s.repo == nil {
 		return nil, errors.New("achievement repository is not configured")
 	}
 
-	achievements, err := s.repo.GetAllAchievements(ctx)
+	achievements, err := s.repo.GetAllAchievementsForUser(ctx, userUUID)
 	if err != nil {
 		return nil, err
 	}
 
-	return &domain.AchievementsResponse{
+	return &domain.AllAchievementsResponse{
 		Achievements: achievements,
 	}, nil
 }

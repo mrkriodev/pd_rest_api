@@ -1,8 +1,8 @@
 flowchart TB
   user[User]
 
-  user -->|GET /api/available_achievements| hAvailable[HTTPHandler.AvailableAchievements]
-  hAvailable --> sGetAvailable[AchievementService.GetAvailableAchievements]
+  user -->|GET /api/user/all_achivements (JWT)| hAvailable[HTTPHandler.AllAchievements]
+  hAvailable --> sGetAvailable[AchievementService.GetAllAchievementsForUser]
 
   user -->|GET /api/user/achievements (JWT)| hUser[HTTPHandler.UserAchievements]
   hUser --> sGetUser[AchievementService.GetUserAchievements]

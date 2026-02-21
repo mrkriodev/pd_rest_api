@@ -57,7 +57,6 @@ func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingServi
 	e.GET("/googlecallback", h.GoogleOAuthCallback)
 	api.GET("/status", h.Status)
 	api.GET("/available_events", h.AvailableEvents)
-	api.GET("/available_achievements", h.AvailableAchievements)
 	api.GET("/globalrating", h.GlobalRating)
 	api.GET("/getidbysession", h.GetUserIDBySession)
 
@@ -92,6 +91,7 @@ func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingServi
 	user.GET("/friends_ratings", h.UserFriendsRatings)
 	user.GET("/achievements", h.UserAchievements)
 	user.GET("/achievement", h.UserAchievementByID)
+	user.GET("/all_achivements", h.AllAchievements)
 	user.GET("/events", h.UserEvents)
 	user.POST("/claim_achievement_prize", h.ClaimAchievement)
 	user.POST("/update_achivement_satus", h.UpdateAchievementStatus)
@@ -1333,13 +1333,18 @@ func (h *HTTPHandler) AvailableEvents(c echo.Context) error {
 	})
 }
 
-func (h *HTTPHandler) AvailableAchievements(c echo.Context) error {
+func (h *HTTPHandler) AllAchievements(c echo.Context) error {
 	if h.achievementService == nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for achievements"})
 	}
 
+	userUUID, ok := c.Get("user_uuid").(string)
+	if !ok || userUUID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
 	ctx := context.Background()
-	result, err := h.achievementService.GetAvailableAchievements(ctx)
+	result, err := h.achievementService.GetAllAchievementsForUser(ctx, userUUID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}

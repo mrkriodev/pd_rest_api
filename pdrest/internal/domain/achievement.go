@@ -42,9 +42,22 @@ type UserAchievementEntry struct {
 	ClaimedStatus bool    `json:"claimedStatus"`
 }
 
+// AllAchievementEntry represents an achievement with claim status for a user.
+type AllAchievementEntry struct {
+	AchiveID      string `json:"achiveId"`
+	ImageURL      string `json:"imageUrl"`
+	Desc          string `json:"desc"`
+	ClaimedStatus bool   `json:"claimedStatus"`
+}
+
 // AchievementsResponse represents the response for available achievements.
 type AchievementsResponse struct {
 	Achievements []Achievement `json:"achievements"`
+}
+
+// AllAchievementsResponse represents the response for all achievements for a user.
+type AllAchievementsResponse struct {
+	Achievements []AllAchievementEntry `json:"achievements"`
 }
 
 // UserAchievementsResponse represents the response for user achievements.

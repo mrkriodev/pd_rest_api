@@ -30,23 +30,18 @@ Health check endpoint.
 
 ### Achievements
 
-#### GET /api/available_achievements
-Get list of available achievements.
+#### GET /api/user/all_achivements
+Get all achievements with claim status for the authenticated user (requires JWT).
 
 **Response:**
 ```json
 {
   "achievements": [
     {
-      "id": "first_bet_success",
-      "badge": "First Bet",
-      "title": "First Successful Bet",
+      "achiveId": "first_bet_success",
       "imageUrl": "https://mrkriodev.github.io/mrkrio.github.io/data/1-bet-ach.svg",
       "desc": "Awarded for the first successful bet.",
-      "tags": "bet",
-      "prizeId": 1,
-      "steps": 1,
-      "stepDesc": "Win your first bet"
+      "claimedStatus": false
     }
   ]
 }
@@ -596,7 +591,7 @@ Create a new bet. Returns bet ID.
   "side": "pump",
   "sum": 1000,
   "pair": "ETH/USDT",
-  "timeframe": 60,
+  "timeframe": 15,
   "openPrice": 2765,
   "openTime": "2025-11-09T12:35:00Z"
 }
@@ -606,7 +601,7 @@ Create a new bet. Returns bet ID.
 - `side` (string, required) - Bet side: "pump" or "dump"
 - `sum` (number, required) - Bet amount (must be > 0)
 - `pair` (string, required) - Trading pair (e.g., "ETH/USDT")
-- `timeframe` (integer, required) - Timeframe in seconds (must be > 0)
+- `timeframe` (integer, required) - Timeframe in seconds (forced to 15)
 - `openPrice` (number, required) - Opening price (must be > 0)
 - `openTime` (string, required) - Opening time in ISO 8601 format
 
@@ -639,7 +634,7 @@ Get bet status with current price if timeframe has passed.
   "side": "pump",
   "sum": 1000,
   "pair": "ETH/USDT",
-  "timeframe": 60,
+  "timeframe": 15,
   "openPrice": 2765,
   "closePrice": 2785,
   "openTime": "2025-11-09T12:35:00Z",
@@ -651,7 +646,7 @@ Get bet status with current price if timeframe has passed.
 - `side` - Bet side ("pump" or "dump")
 - `sum` - Bet amount
 - `pair` - Trading pair
-- `timeframe` - Timeframe in seconds
+- `timeframe` - Timeframe in seconds (15 for new bets)
 - `openPrice` - Opening price
 - `closePrice` - Closing price (null if timeframe hasn't passed yet)
 - `openTime` - Opening time
@@ -716,7 +711,7 @@ Get unfinished bets (open bets or closed but unclaimed) for a user.
       "side": "pump",
       "sum": 1000,
       "pair": "ETH/USDT",
-      "timeframe": 60,
+      "timeframe": 15,
       "openPrice": 2765,
       "openTime": "2025-11-09T12:35:00Z",
       "closePrice": null,
@@ -895,7 +890,7 @@ curl -X POST http://localhost:8080/api/user/openbet \
     "side": "pump",
     "sum": 1000,
     "pair": "ETH/USDT",
-    "timeframe": 60,
+    "timeframe": 15,
     "openPrice": 2765,
     "openTime": "2025-11-09T12:35:00Z"
   }'

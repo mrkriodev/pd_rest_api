@@ -14,6 +14,7 @@ import (
 // AchievementRepository provides access to achievement data.
 type AchievementRepository interface {
 	GetAllAchievements(ctx context.Context) ([]domain.Achievement, error)
+	GetAllAchievementsForUser(ctx context.Context, userUUID string) ([]domain.AllAchievementEntry, error)
 	GetUserAchievements(ctx context.Context, userUUID string) ([]domain.UserAchievementEntry, error)
 	GetUserAchievementByID(ctx context.Context, userUUID string, achievementID string) (*domain.UserAchievementEntry, error)
 	GetAchievementByID(ctx context.Context, achievementID string) (*domain.Achievement, error)
@@ -60,6 +61,42 @@ func (r *PostgresAchievementRepository) GetAllAchievements(ctx context.Context) 
 			&achievement.PrizeID,
 			&achievement.Steps,
 			&achievement.StepDesc,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan achievement: %w", err)
+		}
+		achievements = append(achievements, achievement)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating achievements: %w", err)
+	}
+
+	return achievements, nil
+}
+
+func (r *PostgresAchievementRepository) GetAllAchievementsForUser(ctx context.Context, userUUID string) ([]domain.AllAchievementEntry, error) {
+	query := `
+		SELECT a.id, a.image_url, a.desc_text, COALESCE(ua.claimed_status, FALSE) AS claimed_status
+		FROM achievements a
+		LEFT JOIN user_achievements ua
+		       ON a.id = ua.achievement_id AND ua.user_uuid = $1
+		ORDER BY a.id ASC
+	`
+
+	rows, err := r.pool.Query(ctx, query, userUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get achievements for user: %w", err)
+	}
+	defer rows.Close()
+
+	var achievements []domain.AllAchievementEntry
+	for rows.Next() {
+		var achievement domain.AllAchievementEntry
+		if err := rows.Scan(
+			&achievement.AchiveID,
+			&achievement.ImageURL,
+			&achievement.Desc,
+			&achievement.ClaimedStatus,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan achievement: %w", err)
 		}

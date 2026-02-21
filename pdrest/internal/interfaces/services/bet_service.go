@@ -49,6 +49,10 @@ func (s *BetService) OpenBet(ctx context.Context, userUUID string, req *domain.O
 	if req.Timeframe <= 0 {
 		return nil, errors.New("timeframe must be greater than 0")
 	}
+	// // Force 15-second timeframe for all new bets
+	// if req.Timeframe != 15 {
+	// 	req.Timeframe = 15
+	// }
 
 	// Validate open price
 	if req.OpenPrice <= 0 {

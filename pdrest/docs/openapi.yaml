@@ -47,21 +47,6 @@ paths:
                     items:
                       $ref: '#/components/schemas/Event'
 
-  /available_achievements:
-    get:
-      summary: Get available achievements
-      tags:
-        - Achievements
-      responses:
-        '200':
-          description: List of achievements
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AchievementsResponse'
-        '503':
-          $ref: '#/components/responses/ServiceUnavailable'
-
   /globalrating:
     get:
       summary: Get global rating (top users by points)
@@ -813,6 +798,25 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
+  /user/all_achivements:
+    get:
+      summary: Get all achievements for user
+      tags:
+        - User
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: All achievements with claim status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AllAchievementsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
   /user/achievement:
     get:
       summary: Get user achievement by id
@@ -882,8 +886,6 @@ paths:
           description: Achievement claimed
         '400':
           description: Achievement not completed or already claimed
-        '401':
-          description: Unauthorized
         '404':
           description: Achievement not found
           content:
@@ -1721,13 +1723,25 @@ components:
           type: string
           description: Description of steps required
 
-    AchievementsResponse:
+    AllAchievementEntry:
+      type: object
+      properties:
+        achiveId:
+          type: string
+        imageUrl:
+          type: string
+        desc:
+          type: string
+        claimedStatus:
+          type: boolean
+
+    AllAchievementsResponse:
       type: object
       properties:
         achievements:
           type: array
           items:
-            $ref: '#/components/schemas/Achievement'
+            $ref: '#/components/schemas/AllAchievementEntry'
 
     UserAchievementsResponse:
       type: object
@@ -1882,6 +1896,7 @@ components:
           type: integer
           description: Timeframe in seconds
           minimum: 1
+          example: 15
         openPrice:
           type: number
           minimum: 0
@@ -1907,6 +1922,7 @@ components:
           type: string
         timeframe:
           type: integer
+          example: 15
         openPrice:
           type: number
         closePrice:
@@ -1934,6 +1950,7 @@ components:
           type: string
         timeframe:
           type: integer
+          example: 15
         openPrice:
           type: number
         closePrice:
