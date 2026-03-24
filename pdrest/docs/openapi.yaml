@@ -219,6 +219,12 @@ paths:
           schema:
             type: string
           description: Session ID to link existing user to Google info
+        - name: ref
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Referral code returned by /user/referral_link code (8-char for web users, secure payload for Telegram users)
       requestBody:
         required: false
         content:
@@ -286,6 +292,12 @@ paths:
           schema:
             type: string
           description: Session ID to link existing user to Google info
+        - name: ref
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Referral code returned by /user/referral_link code (8-char for web users, secure payload for Telegram users)
       requestBody:
         required: true
         content:
@@ -360,6 +372,12 @@ paths:
           required: false
           schema:
             type: string
+        - name: ref
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Referral code returned by /user/referral_link code (8-char for web users, secure payload for Telegram users)
       responses:
         '200':
           description: User ID and JWT token pair
@@ -409,6 +427,12 @@ paths:
           required: false
           schema:
             type: string
+        - name: ref
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Referral code returned by /user/referral_link code (8-char for web users, secure payload for Telegram users)
       responses:
         '200':
           description: User ID and JWT token pair
@@ -495,6 +519,12 @@ paths:
           schema:
             type: string
           description: Session ID to link existing user to Telegram info
+        - name: ref
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Referral code returned by /user/referral_link code (8-char for web users, secure payload for Telegram users)
       responses:
         '200':
           description: User ID and JWT token pair
@@ -536,6 +566,12 @@ paths:
           schema:
             type: string
           description: window.Telegram.WebApp.tgInitData
+        - name: ref
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Referral code returned by /user/referral_link code (8-char for web users, secure payload for Telegram users)
       responses:
         '200':
           description: User ID and JWT token pair
@@ -574,6 +610,13 @@ paths:
         Validates window.Telegram.WebApp.tgInitData and registers/updates user by telegram_id.
       tags:
         - Authentication
+      parameters:
+        - name: ref
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Referral code returned by /user/referral_link code (8-char for web users, secure payload for Telegram users)
       requestBody:
         required: true
         content:
@@ -748,6 +791,14 @@ paths:
         - User
       security:
         - BearerAuth: []
+      parameters:
+        - name: dest
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [web, bot]
+          description: Destination type for referral link (web or bot). Bot uses https://t.me/<bot>&start=<code>
       responses:
         '200':
           description: Referral link and code
@@ -1174,6 +1225,35 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  # /user/shareresult:
+  #   get:
+  #     summary: Get shareable bet result
+  #     tags:
+  #       - User
+  #     security:
+  #       - BearerAuth: []
+  #     parameters:
+  #       - name: bet_id
+  #         in: query
+  #         required: true
+  #         schema:
+  #           type: integer
+  #     responses:
+  #       '200':
+  #         description: Shareable bet result
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: '#/components/schemas/BetShareResultResponse'
+  #       '400':
+  #         $ref: '#/components/responses/BadRequest'
+  #       '401':
+  #         $ref: '#/components/responses/Unauthorized'
+  #       '404':
+  #         $ref: '#/components/responses/NotFound'
+  #       '503':
+  #         $ref: '#/components/responses/ServiceUnavailable'
+
   /user/claim_bet:
     post:
       summary: Claim bet result
@@ -1548,6 +1628,12 @@ paths:
           schema:
             type: string
           description: Client IP (optional)
+        - name: ref
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Referral code returned by /user/referral_link code (8-char for web users, secure payload for Telegram users) for linking new users
       responses:
         '200':
           description: User ID
@@ -1563,6 +1649,57 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalServerError'
+
+  /admin/register_user:
+    post:
+      summary: Admin register user by Telegram ID
+      tags:
+        - Administration
+      parameters:
+        - name: X-ADMIN-TOKEN
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Admin token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tg_id:
+                  type: integer
+                  format: int64
+                language:
+                  type: string
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+                username:
+                  type: string
+                referrer:
+                  type: string
+              required:
+                - tg_id
+      responses:
+        '200':
+          description: Created or updated user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userId:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
 components:
   securitySchemes:
@@ -1667,10 +1804,10 @@ components:
       properties:
         referral_link:
           type: string
-          description: Absolute referral link containing the user's code
+          description: Referral link (web or bot). Bot format uses https://t.me/<bot>&start=<code>
         code:
           type: string
-          description: Referral code (user UUID)
+          description: Referral code used for referrals (8-char for web users, secure payload for Telegram users)
 
     FriendRatingEntry:
       type: object
@@ -1933,6 +2070,28 @@ components:
           format: date-time
         claimedStatus:
           type: boolean
+
+    # BetShareResultResponse:
+    #   type: object
+    #   properties:
+    #     result:
+    #       type: string
+    #       description: win or lose
+    #     points:
+    #       type: integer
+    #       format: int64
+    #     openPrice:
+    #       type: number
+    #     closePrice:
+    #       type: number
+    #       nullable: true
+    #     openTime:
+    #       type: string
+    #       format: date-time
+    #     closeTime:
+    #       type: string
+    #       format: date-time
+    #       nullable: true
 
     Bet:
       type: object

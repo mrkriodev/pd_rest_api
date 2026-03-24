@@ -8,6 +8,7 @@ import (
 type UserRepository interface {
 	GetLastLogin(uuid string) (*domain.UserLastLogin, error)
 	GetProfile(uuid string) (*domain.UserProfile, error)
+	GetUserByUUID(ctx context.Context, userUUID string) (*domain.User, error)
 	GetUserByGoogleID(googleID string) (*domain.User, error)
 	GetUserByTelegramID(telegramID int64) (*domain.User, error)
 	GetUserBySessionID(ctx context.Context, sessionID string) (*domain.User, error)
@@ -17,6 +18,9 @@ type UserRepository interface {
 	CreateOrUpdateUserWithGoogleInfoByGoogleID(ctx context.Context, googleID string) (string, error)
 	CreateOrUpdateUserWithTelegramInfo(ctx context.Context, userUUID string, telegramID int64, telegramUsername string, telegramFirstName string, telegramLastName string) error
 	CreateOrUpdateUserWithTelegramInfoByTelegramID(ctx context.Context, telegramID int64, telegramUsername string, telegramFirstName string, telegramLastName string) (string, error)
+	UpdateMainRefIfEmpty(ctx context.Context, userUUID string, mainRef string) error
+	ApplyReferralCode(ctx context.Context, userUUID string, referralCode string) error
+	UpdateUserLanguage(ctx context.Context, userUUID string, language string) error
 }
 
 type InMemoryUserRepository struct {
@@ -39,6 +43,11 @@ func (r *InMemoryUserRepository) GetLastLogin(uuid string) (*domain.UserLastLogi
 
 func (r *InMemoryUserRepository) GetProfile(uuid string) (*domain.UserProfile, error) {
 	// In-memory repository doesn't have profile data
+	return nil, nil
+}
+
+func (r *InMemoryUserRepository) GetUserByUUID(ctx context.Context, userUUID string) (*domain.User, error) {
+	// In-memory repository doesn't support user lookup
 	return nil, nil
 }
 
@@ -85,4 +94,19 @@ func (r *InMemoryUserRepository) CreateOrUpdateUserWithTelegramInfo(ctx context.
 func (r *InMemoryUserRepository) CreateOrUpdateUserWithTelegramInfoByTelegramID(ctx context.Context, telegramID int64, telegramUsername string, telegramFirstName string, telegramLastName string) (string, error) {
 	// In-memory repository doesn't support user creation
 	return "", nil
+}
+
+func (r *InMemoryUserRepository) UpdateMainRefIfEmpty(ctx context.Context, userUUID string, mainRef string) error {
+	// In-memory repository doesn't support user updates
+	return nil
+}
+
+func (r *InMemoryUserRepository) ApplyReferralCode(ctx context.Context, userUUID string, referralCode string) error {
+	// In-memory repository doesn't support user updates
+	return nil
+}
+
+func (r *InMemoryUserRepository) UpdateUserLanguage(ctx context.Context, userUUID string, language string) error {
+	// In-memory repository doesn't support user updates
+	return nil
 }

@@ -140,6 +140,43 @@ func (s *BetService) GetBetStatus(ctx context.Context, betID int, userUUID strin
 	}, nil
 }
 
+// func (s *BetService) GetShareResult(ctx context.Context, betID int, userUUID string) (*domain.BetShareResultResponse, error) {
+// 	bet, err := s.repo.GetBetByID(ctx, betID, userUUID)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to get bet: %w", err)
+// 	}
+// 	if bet == nil {
+// 		return nil, errors.New("bet not found")
+// 	}
+//
+// 	now := time.Now().UTC()
+// 	timeframeDuration := time.Duration(bet.Timeframe) * time.Second
+// 	expectedCloseTime := bet.OpenTime.Add(timeframeDuration)
+// 	if now.After(expectedCloseTime) && bet.ClosePrice == nil && s.priceProvider != nil {
+// 		closePrice, err := s.priceProvider.GetPrice(bet.Pair)
+// 		if err == nil {
+// 			closeTime := expectedCloseTime
+// 			if err := s.repo.UpdateBetClosePrice(ctx, betID, closePrice, closeTime); err == nil {
+// 				bet.ClosePrice = &closePrice
+// 				bet.CloseTime = &closeTime
+// 			}
+// 		}
+// 	}
+//
+// 	if bet.ClosePrice == nil {
+// 		return nil, errors.New("bet is not closed yet")
+// 	}
+//
+// 	return &domain.BetShareResultResponse{
+// 		Result:     determinePrizeStatus(*bet),
+// 		Points:     betPoints(bet),
+// 		OpenPrice:  bet.OpenPrice,
+// 		ClosePrice: bet.ClosePrice,
+// 		OpenTime:   bet.OpenTime,
+// 		CloseTime:  bet.CloseTime,
+// 	}, nil
+// }
+
 func (s *BetService) GetUnfinishedBetsByUser(ctx context.Context, userUUID string) ([]domain.Bet, error) {
 	bets, err := s.repo.GetUnfinishedBetsByUser(ctx, userUUID)
 	if err != nil {

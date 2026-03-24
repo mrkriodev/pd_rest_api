@@ -37,6 +37,17 @@ func (s *UserService) GetProfile(uuid string) (*domain.UserProfile, error) {
 	return result, nil
 }
 
+func (s *UserService) GetUserByUUID(ctx context.Context, userUUID string) (*domain.User, error) {
+	result, err := s.repo.GetUserByUUID(ctx, userUUID)
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return nil, errors.New("user not found")
+	}
+	return result, nil
+}
+
 func (s *UserService) GetUserByGoogleID(googleID string) (*domain.User, error) {
 	result, err := s.repo.GetUserByGoogleID(googleID)
 	if err != nil {
@@ -121,4 +132,16 @@ func (s *UserService) RegisterUserWithTelegramByTelegramID(ctx context.Context, 
 		return "", errors.New("telegram_id is required")
 	}
 	return s.repo.CreateOrUpdateUserWithTelegramInfoByTelegramID(ctx, telegramID, telegramUsername, telegramFirstName, telegramLastName)
+}
+
+func (s *UserService) UpdateMainRefIfEmpty(ctx context.Context, userUUID string, mainRef string) error {
+	return s.repo.UpdateMainRefIfEmpty(ctx, userUUID, mainRef)
+}
+
+func (s *UserService) ApplyReferralCode(ctx context.Context, userUUID string, referralCode string) error {
+	return s.repo.ApplyReferralCode(ctx, userUUID, referralCode)
+}
+
+func (s *UserService) UpdateUserLanguage(ctx context.Context, userUUID string, language string) error {
+	return s.repo.UpdateUserLanguage(ctx, userUUID, language)
 }

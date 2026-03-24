@@ -42,3 +42,12 @@ type BetStatusResponse struct {
 	OpenTime   time.Time `json:"openTime"`
 	Claimed    bool      `json:"claimedStatus"`
 }
+
+// type BetShareResultResponse struct {
+// 	Result     string     `json:"result"`
+// 	Points     int64      `json:"points"`
+// 	OpenPrice  float64    `json:"openPrice"`
+// 	ClosePrice *float64   `json:"closePrice,omitempty"`
+// 	OpenTime   time.Time  `json:"openTime"`
+// 	CloseTime  *time.Time `json:"closeTime,omitempty"`
+// }

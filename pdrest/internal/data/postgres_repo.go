@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"pdrest/internal/domain"
 
@@ -64,6 +65,23 @@ func (r *PostgresUserRepository) GetProfile(uuid string) (*domain.UserProfile, e
 		}
 	}
 
+	return &result, nil
+}
+
+func (r *PostgresUserRepository) GetUserByUUID(ctx context.Context, userUUID string) (*domain.User, error) {
+	if userUUID == "" {
+		return nil, fmt.Errorf("user_uuid is required")
+	}
+
+	var result domain.User
+	query := `SELECT user_uuid, telegram_id FROM users WHERE user_uuid = $1`
+	err := r.pool.QueryRow(ctx, query, userUUID).Scan(&result.UserID, &result.TelegramID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get user by uuid: %w", err)
+	}
 	return &result, nil
 }
 
@@ -235,6 +253,118 @@ func (r *PostgresUserRepository) CreateOrUpdateUserWithGoogleInfoByGoogleID(ctx 
 	}
 
 	return userUUID, nil
+}
+
+func (r *PostgresUserRepository) UpdateMainRefIfEmpty(ctx context.Context, userUUID string, mainRef string) error {
+	if userUUID == "" {
+		return fmt.Errorf("user_uuid is required")
+	}
+	if mainRef == "" {
+		return fmt.Errorf("main_ref is required")
+	}
+
+	query := `
+		UPDATE users
+		SET main_ref = $2
+		WHERE user_uuid = $1 AND (main_ref IS NULL OR main_ref = '')
+	`
+	_, err := r.pool.Exec(ctx, query, userUUID, mainRef)
+	if err != nil {
+		return fmt.Errorf("failed to update main_ref: %w", err)
+	}
+	return nil
+}
+
+func (r *PostgresUserRepository) ApplyReferralCode(ctx context.Context, userUUID string, referralCode string) error {
+	if userUUID == "" {
+		return fmt.Errorf("user_uuid is required")
+	}
+	if referralCode == "" {
+		return fmt.Errorf("referral_code is required")
+	}
+	normalizedCode := strings.TrimSpace(referralCode)
+	if normalizedCode == "" {
+		return fmt.Errorf("referral_code is invalid")
+	}
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin referral transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+
+	var referrerUUID string
+	queryReferrer := `
+		SELECT user_uuid::text
+		FROM users
+		WHERE main_ref = $1
+		LIMIT 1
+	`
+	if err = tx.QueryRow(ctx, queryReferrer, normalizedCode).Scan(&referrerUUID); err != nil {
+		if err == pgx.ErrNoRows {
+			return fmt.Errorf("referral code not found")
+		}
+		return fmt.Errorf("failed to lookup referrer: %w", err)
+	}
+
+	if referrerUUID == userUUID {
+		return fmt.Errorf("cannot use own referral code")
+	}
+
+	querySetReferrer := `
+		UPDATE users
+		SET referrer_user_uuid = $2
+		WHERE user_uuid = $1 AND referrer_user_uuid IS NULL
+	`
+	tag, execErr := tx.Exec(ctx, querySetReferrer, userUUID, referrerUUID)
+	if execErr != nil {
+		return fmt.Errorf("failed to set referrer: %w", execErr)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("referrer already set")
+	}
+
+	queryAppend := `
+		UPDATE users
+		SET add_refs = (
+			SELECT ARRAY(
+				SELECT DISTINCT unnest(add_refs || $2::text[])
+			)
+		)
+		WHERE user_uuid = $1
+	`
+	if _, err = tx.Exec(ctx, queryAppend, referrerUUID, userUUID); err != nil {
+		return fmt.Errorf("failed to append add_refs: %w", err)
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit referral transaction: %w", err)
+	}
+	return nil
+}
+
+func (r *PostgresUserRepository) UpdateUserLanguage(ctx context.Context, userUUID string, language string) error {
+	if userUUID == "" {
+		return fmt.Errorf("user_uuid is required")
+	}
+	if strings.TrimSpace(language) == "" {
+		return fmt.Errorf("language is required")
+	}
+
+	query := `
+		UPDATE users
+		SET language = $2
+		WHERE user_uuid = $1
+	`
+	_, err := r.pool.Exec(ctx, query, userUUID, strings.TrimSpace(language))
+	if err != nil {
+		return fmt.Errorf("failed to update language: %w", err)
+	}
+	return nil
 }
 
 // CreateOrUpdateUserWithTelegramInfo creates or updates a user with Telegram OAuth information

@@ -2,6 +2,8 @@ package http
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -59,6 +61,7 @@ func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingServi
 	api.GET("/available_events", h.AvailableEvents)
 	api.GET("/globalrating", h.GlobalRating)
 	api.GET("/getidbysession", h.GetUserIDBySession)
+	api.POST("/admin/register_user", h.AdminRegisterUser)
 
 	// Documentation endpoints
 	api.GET("/docs", h.GetAPIDocumentation)
@@ -102,6 +105,7 @@ func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingServi
 	user.POST("/take_event_prize", h.TakeEventPrize)
 	user.POST("/openbet", h.OpenBet)
 	user.GET("/betstatus", h.BetStatus)
+	// user.GET("/shareresult", h.ShareResult)
 	user.POST("/claim_bet", h.ClaimBet)
 	user.GET("/unfinished_bets/:uuid", h.UnfinishedBets)
 
@@ -358,6 +362,7 @@ func (h *HTTPHandler) GetUserIDBySession(c echo.Context) error {
 	if sessionID == "" {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "X-SESSION-ID header is required"})
 	}
+	referralCode := strings.TrimSpace(c.QueryParam("ref"))
 
 	// Get client IP
 	ipAddress := c.Request().Header.Get("X-Forwarded-For")
@@ -375,9 +380,27 @@ func (h *HTTPHandler) GetUserIDBySession(c echo.Context) error {
 	user, err := h.userService.GetUserBySessionAndIP(ctx, sessionID, ipAddress)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+			if referralCode == "" {
+				return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+			}
+			if err := h.userService.CreateOrUpdateUserBySession(sessionID, ipAddress); err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+			user, err = h.userService.GetUserBySessionAndIP(ctx, sessionID, ipAddress)
+			if err != nil {
+				if strings.Contains(err.Error(), "not found") {
+					return c.JSON(http.StatusNotFound, map[string]string{"error": "user not found for session_id"})
+				}
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	if referralCode != "" {
+		if err := h.userService.ApplyReferralCode(ctx, user.UserID, referralCode); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"userId": user.UserID})
@@ -393,16 +416,54 @@ func (h *HTTPHandler) UserReferralLink(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 	}
 
+	ctx := context.Background()
+	user, err := h.userService.GetUserByUUID(ctx, userUUID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
 	scheme := "http"
 	if c.IsTLS() {
 		scheme = "https"
 	}
 	host := c.Request().Host
-	referralLink := fmt.Sprintf("%s://%s/ref/%s", scheme, host, userUUID)
+	referralCode := ""
+	if user != nil && user.TelegramID != nil {
+		botToken := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
+		if botToken != "" {
+			// Secure referral payload for Telegram users.
+			mac := hmac.New(sha256.New, []byte(botToken))
+			_, _ = mac.Write([]byte(strconv.FormatInt(*user.TelegramID, 10)))
+			referralCode = fmt.Sprintf("%x", mac.Sum(nil))
+		}
+	}
+	if referralCode == "" {
+		codeHash := sha256.Sum256([]byte(userUUID))
+		referralCode = fmt.Sprintf("%x", codeHash[:])
+		if len(referralCode) > 8 {
+			referralCode = referralCode[:8]
+		}
+	}
+	referralLink := fmt.Sprintf("%s://%s/ref/%s", scheme, host, referralCode)
+	dest := strings.ToLower(strings.TrimSpace(c.QueryParam("dest")))
+	if dest == "bot" {
+		botName := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_NAME"))
+		if botName == "" {
+			botName = "pumpdump_app_bot"
+		}
+		referralLink = fmt.Sprintf("https://t.me/%s&start=%s", botName, referralCode)
+	}
+
+	if err := h.userService.UpdateMainRefIfEmpty(ctx, userUUID, referralCode); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
 
 	return c.JSON(http.StatusOK, map[string]string{
 		"referral_link": referralLink,
-		"code":          userUUID,
+		"code":          referralCode,
 	})
 }
 
@@ -531,6 +592,40 @@ func (h *HTTPHandler) BetStatus(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, response)
 }
+
+// func (h *HTTPHandler) ShareResult(c echo.Context) error {
+// 	if h.betService == nil {
+// 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for bets"})
+// 	}
+//
+// 	userUUID, ok := c.Get("user_uuid").(string)
+// 	if !ok || userUUID == "" {
+// 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+// 	}
+//
+// 	betIDStr := c.QueryParam("bet_id")
+// 	if betIDStr == "" {
+// 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "bet_id is required"})
+// 	}
+// 	betID, err := strconv.Atoi(betIDStr)
+// 	if err != nil || betID <= 0 {
+// 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid bet_id"})
+// 	}
+//
+// 	ctx := context.Background()
+// 	result, err := h.betService.GetShareResult(ctx, betID, userUUID)
+// 	if err != nil {
+// 		if strings.Contains(err.Error(), "not found") {
+// 			return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+// 		}
+// 		if strings.Contains(err.Error(), "not closed") {
+// 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+// 		}
+// 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+// 	}
+//
+// 	return c.JSON(http.StatusOK, result)
+// }
 
 func (h *HTTPHandler) ClaimBet(c echo.Context) error {
 	if h.betService == nil {
@@ -850,6 +945,7 @@ func (h *HTTPHandler) RegisterGoogleUser(c echo.Context) error {
 	if sessionID == "" {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "X-SESSION-ID header is required"})
 	}
+	referralCode := strings.TrimSpace(c.QueryParam("ref"))
 
 	// Get client IP (needed if we have to create user by session)
 	ipAddress := c.Request().Header.Get("X-Forwarded-For")
@@ -901,6 +997,11 @@ func (h *HTTPHandler) RegisterGoogleUser(c echo.Context) error {
 	if err := h.userService.RegisterUserWithGoogle(ctx, sessionUser.UserID, googleUserInfo.ID); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+	if referralCode != "" {
+		if err := h.userService.ApplyReferralCode(ctx, sessionUser.UserID, referralCode); err != nil && !strings.Contains(err.Error(), "referrer already set") {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+	}
 
 	// Generate JWT token pair for the user
 	tokenPair, err := h.authService.GenerateTokenPair(sessionUser.UserID)
@@ -944,6 +1045,7 @@ func (h *HTTPHandler) RegisterGoogleUserOAuth2(c echo.Context) error {
 	if sessionID == "" {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "X-SESSION-ID header is required"})
 	}
+	referralCode := strings.TrimSpace(c.QueryParam("ref"))
 
 	// Get client IP (needed if we have to create user by session)
 	ipAddress := c.Request().Header.Get("X-Forwarded-For")
@@ -1026,6 +1128,11 @@ func (h *HTTPHandler) RegisterGoogleUserOAuth2(c echo.Context) error {
 	if err := h.userService.RegisterUserWithGoogle(ctx, sessionUser.UserID, googleUserInfo.ID); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+	if referralCode != "" {
+		if err := h.userService.ApplyReferralCode(ctx, sessionUser.UserID, referralCode); err != nil && !strings.Contains(err.Error(), "referrer already set") {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+	}
 
 	tokenPair, err := h.authService.GenerateTokenPair(sessionUser.UserID)
 	if err != nil {
@@ -1060,6 +1167,8 @@ func (h *HTTPHandler) GoogleOAuthCallback(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "code is required"})
 	}
 
+	referralCode := strings.TrimSpace(c.QueryParam("ref"))
+
 	ctx := context.Background()
 	token, err := h.googleOAuthConfig.Exchange(ctx, code)
 	if err != nil {
@@ -1079,6 +1188,11 @@ func (h *HTTPHandler) GoogleOAuthCallback(c echo.Context) error {
 	userID, err := h.userService.RegisterUserWithGoogleByGoogleID(ctx, googleUserInfo.ID)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	if referralCode != "" {
+		if err := h.userService.ApplyReferralCode(ctx, userID, referralCode); err != nil && !strings.Contains(err.Error(), "referrer already set") {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
 	}
 
 	tokenPair, err := h.authService.GenerateTokenPair(userID)
@@ -1138,6 +1252,7 @@ func (h *HTTPHandler) TelegramLogin(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
+	referralCode := strings.TrimSpace(c.QueryParam("ref"))
 
 	// Get optional preauth_token from header or query parameter
 	preauthToken := c.Request().Header.Get("X-Preauth-Token")
@@ -1212,6 +1327,11 @@ func (h *HTTPHandler) TelegramLogin(c echo.Context) error {
 	if err := h.userService.RegisterUserWithTelegram(ctx, sessionUser.UserID, telegramUserInfo.ID, telegramUserInfo.Username, telegramUserInfo.FirstName, telegramUserInfo.LastName); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+	if referralCode != "" {
+		if err := h.userService.ApplyReferralCode(ctx, sessionUser.UserID, referralCode); err != nil && !strings.Contains(err.Error(), "referrer already set") {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+	}
 
 	// Link preauth token to user if provided
 	if preauthToken != "" && h.rouletteService != nil {
@@ -1258,11 +1378,17 @@ func (h *HTTPHandler) TelegramWebAppLogin(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
+	referralCode := strings.TrimSpace(c.QueryParam("ref"))
 
 	ctx := context.Background()
 	userID, err := h.userService.RegisterUserWithTelegramByTelegramID(ctx, telegramUserInfo.ID, telegramUserInfo.Username, telegramUserInfo.FirstName, telegramUserInfo.LastName)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	if referralCode != "" {
+		if err := h.userService.ApplyReferralCode(ctx, userID, referralCode); err != nil && !strings.Contains(err.Error(), "referrer already set") {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
 	}
 
 	tokenPair, err := h.authService.GenerateTokenPair(userID)
@@ -1296,11 +1422,17 @@ func (h *HTTPHandler) TelegramCallback(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
 	}
+	referralCode := strings.TrimSpace(c.QueryParam("ref"))
 
 	ctx := context.Background()
 	userID, err := h.userService.RegisterUserWithTelegramByTelegramID(ctx, telegramUserInfo.ID, telegramUserInfo.Username, telegramUserInfo.FirstName, telegramUserInfo.LastName)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	if referralCode != "" {
+		if err := h.userService.ApplyReferralCode(ctx, userID, referralCode); err != nil && !strings.Contains(err.Error(), "referrer already set") {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
 	}
 
 	tokenPair, err := h.authService.GenerateTokenPair(userID)
@@ -1350,6 +1482,69 @@ func (h *HTTPHandler) AllAchievements(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, result)
+}
+
+func (h *HTTPHandler) AdminRegisterUser(c echo.Context) error {
+	if h.userService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "User service unavailable"})
+	}
+
+	adminToken := strings.TrimSpace(c.Request().Header.Get("X-ADMIN-TOKEN"))
+	if adminToken == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "X-ADMIN-TOKEN header is required"})
+	}
+	expectedToken := strings.TrimSpace(os.Getenv("ADMIN_TOKEN"))
+	if expectedToken == "" || adminToken != expectedToken {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid admin token"})
+	}
+
+	var req struct {
+		TelegramID    int64   `json:"tg_id"`
+		Language      *string `json:"language"`
+		FirstName     *string `json:"first_name"`
+		LastName      *string `json:"last_name"`
+		Username      *string `json:"username"`
+		ReferrerCode  *string `json:"referrer"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+	if req.TelegramID == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "tg_id is required"})
+	}
+
+	firstName := ""
+	if req.FirstName != nil {
+		firstName = strings.TrimSpace(*req.FirstName)
+	}
+	lastName := ""
+	if req.LastName != nil {
+		lastName = strings.TrimSpace(*req.LastName)
+	}
+	username := ""
+	if req.Username != nil {
+		username = strings.TrimSpace(*req.Username)
+	}
+
+	ctx := context.Background()
+	userID, err := h.userService.RegisterUserWithTelegramByTelegramID(ctx, req.TelegramID, username, firstName, lastName)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	if req.Language != nil && strings.TrimSpace(*req.Language) != "" {
+		if err := h.userService.UpdateUserLanguage(ctx, userID, *req.Language); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+	}
+
+	if req.ReferrerCode != nil && strings.TrimSpace(*req.ReferrerCode) != "" {
+		if err := h.userService.ApplyReferralCode(ctx, userID, *req.ReferrerCode); err != nil && !strings.Contains(err.Error(), "referrer already set") {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"userId": userID})
 }
 
 func (h *HTTPHandler) UserAchievements(c echo.Context) error {
