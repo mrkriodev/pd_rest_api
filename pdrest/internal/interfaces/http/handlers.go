@@ -427,14 +427,8 @@ func (h *HTTPHandler) UserReferralLink(c echo.Context) error {
 
 	host := c.Request().Host
 	referralCode := ""
-	if user != nil && user.TelegramID != nil {
-		botToken := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
-		if botToken != "" {
-			// Secure referral payload for Telegram users.
-			mac := hmac.New(sha256.New, []byte(botToken))
-			_, _ = mac.Write([]byte(strconv.FormatInt(*user.TelegramID, 10)))
-			referralCode = fmt.Sprintf("%x", mac.Sum(nil))
-		}
+	if user != nil && user.MainRef != nil {
+		referralCode = strings.TrimSpace(*user.MainRef)
 	}
 	if referralCode == "" {
 		webCodeHash := sha256.Sum256([]byte(userUUID))
@@ -447,6 +441,15 @@ func (h *HTTPHandler) UserReferralLink(c echo.Context) error {
 	referralLink := fmt.Sprintf("https://%s/ref/%s", host, referralCode)
 	dest := strings.ToLower(strings.TrimSpace(c.QueryParam("dest")))
 	if dest == "bot" {
+		if user != nil && user.TelegramID != nil {
+			botToken := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
+			if botToken != "" {
+				// For Telegram destination, use secure deeplink payload derived from tg_id.
+				mac := hmac.New(sha256.New, []byte(botToken))
+				_, _ = mac.Write([]byte(strconv.FormatInt(*user.TelegramID, 10)))
+				referralCode = fmt.Sprintf("%x", mac.Sum(nil))
+			}
+		}
 		botName := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_NAME"))
 		if botName == "" {
 			botName = "pumpdump_app_bot"
