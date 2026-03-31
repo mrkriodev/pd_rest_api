@@ -11,6 +11,7 @@ type UserRepository interface {
 	GetUserByUUID(ctx context.Context, userUUID string) (*domain.User, error)
 	GetUserByGoogleID(googleID string) (*domain.User, error)
 	GetUserByTelegramID(telegramID int64) (*domain.User, error)
+	FindUserByTelegramRefCode(ctx context.Context, refCode string, botToken string) (*domain.User, error)
 	GetUserBySessionID(ctx context.Context, sessionID string) (*domain.User, error)
 	GetUserBySessionAndIP(ctx context.Context, sessionID string, ipAddress string) (*domain.User, error)
 	CreateOrUpdateUserBySession(sessionID string, ipAddress string) error
@@ -59,6 +60,11 @@ func (r *InMemoryUserRepository) GetUserByGoogleID(googleID string) (*domain.Use
 
 func (r *InMemoryUserRepository) GetUserByTelegramID(telegramID int64) (*domain.User, error) {
 	// In-memory repository doesn't have Telegram user data
+	return nil, nil
+}
+
+func (r *InMemoryUserRepository) FindUserByTelegramRefCode(ctx context.Context, refCode string, botToken string) (*domain.User, error) {
+	// In-memory repository doesn't support telegram ref code lookup
 	return nil, nil
 }
 

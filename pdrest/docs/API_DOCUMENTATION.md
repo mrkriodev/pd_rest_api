@@ -63,14 +63,16 @@ Admin registration endpoint to create/update user by Telegram ID.
   "first_name": "John",
   "last_name": "Doe",
   "username": "john_doe",
-  "inviter_tg_id": "123456789"
+  "inviter_deeplink_refcode": "Mtad73Az"
 }
 ```
 
 **Notes:**
 - `tg_id` is required
-- `language`, `first_name`, `last_name`, `username`, `inviter_tg_id` are optional
-- if `inviter_tg_id` is provided and inviter exists, `referrer_user_uuid` is set for the newly created user (if not already set)
+- `language`, `first_name`, `last_name`, `username`, `inviter_deeplink_refcode` are optional
+- if `inviter_deeplink_refcode` is provided, backend first tries exact inviter `main_ref` code
+- if not found, backend resolves inviter by matching this value to Telegram deeplink HMAC code (based on `TELEGRAM_BOT_TOKEN` and inviter `telegram_id`)
+- if inviter is found, `referrer_user_uuid` is set for the newly created user (if not already set)
 
 **Response:**
 ```json

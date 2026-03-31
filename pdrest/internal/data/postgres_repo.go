@@ -2,6 +2,8 @@ package data
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"fmt"
 	"strings"
 
@@ -117,6 +119,48 @@ func (r *PostgresUserRepository) GetUserByTelegramID(telegramID int64) (*domain.
 	}
 
 	return &result, nil
+}
+
+func (r *PostgresUserRepository) FindUserByTelegramRefCode(ctx context.Context, refCode string, botToken string) (*domain.User, error) {
+	normalized := strings.TrimSpace(strings.ToLower(refCode))
+	if normalized == "" {
+		return nil, fmt.Errorf("ref_code is required")
+	}
+	if strings.TrimSpace(botToken) == "" {
+		return nil, fmt.Errorf("bot_token is required")
+	}
+
+	query := `
+		SELECT user_uuid, telegram_id
+		FROM users
+		WHERE telegram_id IS NOT NULL
+	`
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query telegram users: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var user domain.User
+		if err := rows.Scan(&user.UserID, &user.TelegramID); err != nil {
+			return nil, fmt.Errorf("failed to scan telegram user: %w", err)
+		}
+		if user.TelegramID == nil {
+			continue
+		}
+		mac := hmac.New(sha256.New, []byte(botToken))
+		_, _ = mac.Write([]byte(fmt.Sprintf("%d", *user.TelegramID)))
+		code := fmt.Sprintf("%x", mac.Sum(nil))
+		if strings.EqualFold(code, normalized) {
+			return &user, nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating telegram users: %w", err)
+	}
+
+	return nil, nil
 }
 
 func (r *PostgresUserRepository) GetUserBySessionID(ctx context.Context, sessionID string) (*domain.User, error) {

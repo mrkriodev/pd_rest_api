@@ -1680,9 +1680,13 @@ paths:
                   type: string
                 username:
                   type: string
-                inviter_tg_id:
+                inviter_deeplink_refcode:
                   type: string
-                  description: Inviter Telegram ID (numeric string). If inviter exists, new user will be linked as referral.
+                  description: |
+                    Inviter referral code value.
+                    Backend first tries exact main_ref match.
+                    If not found, backend resolves inviter by comparing this value with Telegram deeplink HMAC code
+                    generated from TELEGRAM_BOT_TOKEN and users.telegram_id.
               required:
                 - tg_id
       responses:

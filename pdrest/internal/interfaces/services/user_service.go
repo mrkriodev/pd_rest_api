@@ -70,6 +70,17 @@ func (s *UserService) GetUserByTelegramID(telegramID int64) (*domain.User, error
 	return result, nil
 }
 
+func (s *UserService) FindUserByTelegramRefCode(ctx context.Context, refCode string, botToken string) (*domain.User, error) {
+	result, err := s.repo.FindUserByTelegramRefCode(ctx, refCode, botToken)
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return nil, errors.New("user not found")
+	}
+	return result, nil
+}
+
 func (s *UserService) GetUserBySessionID(ctx context.Context, sessionID string) (*domain.User, error) {
 	result, err := s.repo.GetUserBySessionID(ctx, sessionID)
 	if err != nil {
