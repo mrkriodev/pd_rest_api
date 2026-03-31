@@ -266,7 +266,8 @@ func (r *PostgresUserRepository) UpdateMainRefIfEmpty(ctx context.Context, userU
 	query := `
 		UPDATE users
 		SET main_ref = $2
-		WHERE user_uuid = $1 AND (main_ref IS NULL OR main_ref = '')
+		WHERE user_uuid = $1
+		  AND (main_ref IS DISTINCT FROM $2)
 	`
 	_, err := r.pool.Exec(ctx, query, userUUID, mainRef)
 	if err != nil {

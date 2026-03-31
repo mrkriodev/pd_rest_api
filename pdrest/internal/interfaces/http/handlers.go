@@ -426,13 +426,7 @@ func (h *HTTPHandler) UserReferralLink(c echo.Context) error {
 	}
 
 	host := c.Request().Host
-	webCodeHash := sha256.Sum256([]byte(userUUID))
-	webReferralCode := fmt.Sprintf("%x", webCodeHash[:])
-	if len(webReferralCode) > 8 {
-		webReferralCode = webReferralCode[:8]
-	}
-
-	referralCode := webReferralCode
+	referralCode := ""
 	if user != nil && user.TelegramID != nil {
 		botToken := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
 		if botToken != "" {
@@ -442,8 +436,15 @@ func (h *HTTPHandler) UserReferralLink(c echo.Context) error {
 			referralCode = fmt.Sprintf("%x", mac.Sum(nil))
 		}
 	}
+	if referralCode == "" {
+		webCodeHash := sha256.Sum256([]byte(userUUID))
+		referralCode = fmt.Sprintf("%x", webCodeHash[:])
+		if len(referralCode) > 8 {
+			referralCode = referralCode[:8]
+		}
+	}
 
-	referralLink := fmt.Sprintf("https://%s/ref/%s", host, webReferralCode)
+	referralLink := fmt.Sprintf("https://%s/ref/%s", host, referralCode)
 	dest := strings.ToLower(strings.TrimSpace(c.QueryParam("dest")))
 	if dest == "bot" {
 		botName := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_NAME"))
@@ -453,13 +454,13 @@ func (h *HTTPHandler) UserReferralLink(c echo.Context) error {
 		referralLink = fmt.Sprintf("https://t.me/%s&start=%s", botName, referralCode)
 	}
 
-	if err := h.userService.UpdateMainRefIfEmpty(ctx, userUUID, webReferralCode); err != nil {
+	if err := h.userService.UpdateMainRefIfEmpty(ctx, userUUID, referralCode); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{
 		"referral_link": referralLink,
-		"code":          webReferralCode,
+		"code":          referralCode,
 	})
 }
 
