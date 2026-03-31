@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -448,6 +449,10 @@ func (h *HTTPHandler) UserReferralLink(c echo.Context) error {
 	// Normalize legacy/invalid values that can leak raw UUID/hash.
 	if strings.EqualFold(referralCode, userUUID) || strings.EqualFold(referralCode, fullWebHash) {
 		referralCode = preferredCode
+	}
+	// Migrate legacy short web code to tg deeplink code when Telegram identity is known.
+	if tgReferralCode != "" && strings.EqualFold(referralCode, webReferralCode) {
+		referralCode = tgReferralCode
 	}
 	if referralCode == "" {
 		referralCode = preferredCode
@@ -1496,15 +1501,18 @@ func (h *HTTPHandler) AllAchievements(c echo.Context) error {
 
 func (h *HTTPHandler) AdminRegisterUser(c echo.Context) error {
 	if h.userService == nil {
+		log.Printf("admin/register_user: user service unavailable")
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "User service unavailable"})
 	}
 
 	adminToken := strings.TrimSpace(c.Request().Header.Get("X-ADMIN-TOKEN"))
 	if adminToken == "" {
+		log.Printf("admin/register_user: missing X-ADMIN-TOKEN header")
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "X-ADMIN-TOKEN header is required"})
 	}
 	expectedToken := strings.TrimSpace(os.Getenv("ADMIN_TOKEN"))
 	if expectedToken == "" || adminToken != expectedToken {
+		log.Printf("admin/register_user: invalid admin token")
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid admin token"})
 	}
 
@@ -1517,9 +1525,11 @@ func (h *HTTPHandler) AdminRegisterUser(c echo.Context) error {
 		InviterDeeplinkRefcode *string `json:"inviter_deeplink_refcode"`
 	}
 	if err := c.Bind(&req); err != nil {
+		log.Printf("admin/register_user: invalid request body: %v", err)
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 	if req.TelegramID == 0 {
+		log.Printf("admin/register_user: tg_id is required")
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "tg_id is required"})
 	}
 
@@ -1537,23 +1547,28 @@ func (h *HTTPHandler) AdminRegisterUser(c echo.Context) error {
 	}
 
 	ctx := context.Background()
-	userID, err := h.userService.RegisterUserWithTelegramByTelegramID(ctx, req.TelegramID, username, firstName, lastName)
+	newUserID, err := h.userService.RegisterUserWithTelegramByTelegramID(ctx, req.TelegramID, username, firstName, lastName)
 	if err != nil {
+		log.Printf("admin/register_user: failed to create/update user (tg_id=%d): %v", req.TelegramID, err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	// Keep main_ref deterministic on admin-created telegram users.
-	mainRefCode := buildWebRefCode(userID)
 	botToken := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
-	if botToken != "" {
-		mainRefCode = buildTelegramRefCodeByTGID(botToken, req.TelegramID)
+	if botToken == "" {
+		log.Printf("admin/register_user: TELEGRAM_BOT_TOKEN is not configured; cannot create tg deeplink code for tg_id=%d user_uuid=%s", req.TelegramID, newUserID)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "TELEGRAM_BOT_TOKEN is not configured"})
 	}
-	if err := h.userService.UpdateMainRefIfEmpty(ctx, userID, mainRefCode); err != nil {
+	mainRefCode := buildTelegramRefCodeByTGID(botToken, req.TelegramID)
+	if err := h.userService.UpdateMainRefIfEmpty(ctx, newUserID, mainRefCode); err != nil {
+		log.Printf("admin/register_user: failed to set main_ref for user_uuid=%s tg_id=%d: %v", newUserID, req.TelegramID, err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+	log.Printf("admin/register_user: main_ref set to tg HMAC for user_uuid=%s tg_id=%d", newUserID, req.TelegramID)
 
 	if req.Language != nil && strings.TrimSpace(*req.Language) != "" {
-		if err := h.userService.UpdateUserLanguage(ctx, userID, *req.Language); err != nil {
+		if err := h.userService.UpdateUserLanguage(ctx, newUserID, *req.Language); err != nil {
+			log.Printf("admin/register_user: failed to update language for user_uuid=%s: %v", newUserID, err)
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		}
 	}
@@ -1562,35 +1577,45 @@ func (h *HTTPHandler) AdminRegisterUser(c echo.Context) error {
 		refCode := strings.TrimSpace(*req.InviterDeeplinkRefcode)
 		inviterUser, findErr := h.userService.FindUserByMainRef(ctx, refCode)
 		if findErr == nil && inviterUser != nil {
-			if setErr := h.userService.SetReferrerByInviterUUID(ctx, userID, inviterUser.UserID); setErr != nil && !strings.Contains(setErr.Error(), "referrer already set") {
+			if setErr := h.userService.SetReferrerByInviterUUID(ctx, newUserID, inviterUser.UserID); setErr != nil && !strings.Contains(setErr.Error(), "referrer already set") {
+				log.Printf("admin/register_user: failed to set referrer by main_ref (new_user=%s inviter=%s): %v", newUserID, inviterUser.UserID, setErr)
 				return c.JSON(http.StatusBadRequest, map[string]string{"error": setErr.Error()})
 			}
+			log.Printf("admin/register_user: inviter resolved by main_ref (new_user=%s inviter=%s)", newUserID, inviterUser.UserID)
 		} else {
 			botToken := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
 			if botToken == "" {
+				log.Printf("admin/register_user: TELEGRAM_BOT_TOKEN missing for inviter fallback (new_user=%s ref_code=%s)", newUserID, refCode)
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "TELEGRAM_BOT_TOKEN is not configured"})
 			}
 			inviterUser, findErr := h.userService.FindUserByTelegramRefCode(ctx, refCode, botToken)
 			if findErr != nil {
 				if strings.Contains(findErr.Error(), "not found") {
+					log.Printf("admin/register_user: inviter code not found (new_user=%s ref_code=%s)", newUserID, refCode)
 					return c.JSON(http.StatusBadRequest, map[string]string{"error": "inviter_deeplink_refcode is invalid"})
 				}
+				log.Printf("admin/register_user: inviter fallback lookup failed (new_user=%s ref_code=%s): %v", newUserID, refCode, findErr)
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": findErr.Error()})
 			}
 			if inviterUser == nil {
+				log.Printf("admin/register_user: inviter fallback returned nil (new_user=%s ref_code=%s)", newUserID, refCode)
 				return c.JSON(http.StatusBadRequest, map[string]string{"error": "inviter_deeplink_refcode is invalid"})
 			}
 			// Persist matched deeplink code for inviter, so next referrals resolve directly by main_ref.
 			if updateErr := h.userService.UpdateMainRefIfEmpty(ctx, inviterUser.UserID, refCode); updateErr != nil {
+				log.Printf("admin/register_user: failed to backfill inviter main_ref (inviter=%s): %v", inviterUser.UserID, updateErr)
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": updateErr.Error()})
 			}
-			if setErr := h.userService.SetReferrerByInviterUUID(ctx, userID, inviterUser.UserID); setErr != nil && !strings.Contains(setErr.Error(), "referrer already set") {
+			if setErr := h.userService.SetReferrerByInviterUUID(ctx, newUserID, inviterUser.UserID); setErr != nil && !strings.Contains(setErr.Error(), "referrer already set") {
+				log.Printf("admin/register_user: failed to set referrer by fallback (new_user=%s inviter=%s): %v", newUserID, inviterUser.UserID, setErr)
 				return c.JSON(http.StatusBadRequest, map[string]string{"error": setErr.Error()})
 			}
+			log.Printf("admin/register_user: inviter resolved by tg deeplink fallback (new_user=%s inviter=%s)", newUserID, inviterUser.UserID)
 		}
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"userId": userID})
+	log.Printf("admin/register_user: success user_uuid=%s tg_id=%d", newUserID, req.TelegramID)
+	return c.JSON(http.StatusOK, map[string]string{"userId": newUserID})
 }
 
 func buildWebRefCode(userUUID string) string {
