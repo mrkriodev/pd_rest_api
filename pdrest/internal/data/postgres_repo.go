@@ -74,8 +74,8 @@ func (r *PostgresUserRepository) GetUserByUUID(ctx context.Context, userUUID str
 	}
 
 	var result domain.User
-	query := `SELECT user_uuid, telegram_id FROM users WHERE user_uuid = $1`
-	err := r.pool.QueryRow(ctx, query, userUUID).Scan(&result.UserID, &result.TelegramID)
+	query := `SELECT user_uuid, telegram_id, main_ref FROM users WHERE user_uuid = $1`
+	err := r.pool.QueryRow(ctx, query, userUUID).Scan(&result.UserID, &result.TelegramID, &result.MainRef)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil

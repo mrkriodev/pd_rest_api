@@ -12,6 +12,7 @@ type UserProfile struct {
 
 type User struct {
 	UserID            string  `json:"userID"`
+	MainRef           *string `json:"main_ref,omitempty"`
 	GoogleID          *string `json:"google_id,omitempty"`
 	GoogleEmail       *string `json:"google_email,omitempty"`
 	GoogleName        *string `json:"google_name,omitempty"`
