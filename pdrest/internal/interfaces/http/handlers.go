@@ -427,30 +427,20 @@ func (h *HTTPHandler) UserReferralLink(c echo.Context) error {
 
 	host := c.Request().Host
 	referralCode := ""
-	if user != nil && user.MainRef != nil {
-		referralCode = strings.TrimSpace(*user.MainRef)
-	}
-	needsRefresh := referralCode == ""
-	if !needsRefresh && looksLikeUUID(referralCode) {
-		// Refresh legacy uuid-based refs to deterministic code format.
-		needsRefresh = true
-	}
-	if needsRefresh {
-		if user != nil && user.TelegramID != nil {
-			botToken := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
-			if botToken != "" {
-				// Secure referral payload for Telegram users.
-				mac := hmac.New(sha256.New, []byte(botToken))
-				_, _ = mac.Write([]byte(strconv.FormatInt(*user.TelegramID, 10)))
-				referralCode = fmt.Sprintf("%x", mac.Sum(nil))
-			}
+	if user != nil && user.TelegramID != nil {
+		botToken := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
+		if botToken != "" {
+			// Secure referral payload for Telegram users.
+			mac := hmac.New(sha256.New, []byte(botToken))
+			_, _ = mac.Write([]byte(strconv.FormatInt(*user.TelegramID, 10)))
+			referralCode = fmt.Sprintf("%x", mac.Sum(nil))
 		}
-		if referralCode == "" {
-			webCodeHash := sha256.Sum256([]byte(userUUID))
-			referralCode = fmt.Sprintf("%x", webCodeHash[:])
-			if len(referralCode) > 8 {
-				referralCode = referralCode[:8]
-			}
+	}
+	if referralCode == "" {
+		webCodeHash := sha256.Sum256([]byte(userUUID))
+		referralCode = fmt.Sprintf("%x", webCodeHash[:])
+		if len(referralCode) > 8 {
+			referralCode = referralCode[:8]
 		}
 	}
 
@@ -461,7 +451,7 @@ func (h *HTTPHandler) UserReferralLink(c echo.Context) error {
 		if botName == "" {
 			botName = "pumpdump_app_bot"
 		}
-		referralLink = fmt.Sprintf("https://t.me/%s&start=%s", botName, referralCode)
+		referralLink = fmt.Sprintf("https://t.me/%s?start=%s", botName, referralCode)
 	}
 
 	if err := h.userService.UpdateMainRefIfEmpty(ctx, userUUID, referralCode); err != nil {
@@ -472,10 +462,6 @@ func (h *HTTPHandler) UserReferralLink(c echo.Context) error {
 		"referral_link": referralLink,
 		"code":          referralCode,
 	})
-}
-
-func looksLikeUUID(value string) bool {
-	return len(value) == 36 && strings.Count(value, "-") == 4
 }
 
 func (h *HTTPHandler) UserFriendsRatings(c echo.Context) error {

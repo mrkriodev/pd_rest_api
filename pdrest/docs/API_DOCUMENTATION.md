@@ -38,7 +38,7 @@ Get referral link for authenticated user (requires JWT).
 
 **Behavior:**
 - `dest=web` (default): returns `https://<host>/ref/<code>`
-- `dest=bot`: returns `https://t.me/<TELEGRAM_BOT_NAME>&start=<code>`
+- `dest=bot`: returns `https://t.me/<TELEGRAM_BOT_NAME>?start=<code>`
 - `code` is used as user `main_ref` value
 
 **Response:**

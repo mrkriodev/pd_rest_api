@@ -798,7 +798,7 @@ paths:
           schema:
             type: string
             enum: [web, bot]
-          description: Destination type for referral link (web or bot). Bot uses https://t.me/<bot>&start=<code>
+          description: Destination type for referral link (web or bot). Bot uses https://t.me/<bot>?start=<code>
       responses:
         '200':
           description: Referral link and code
@@ -1805,7 +1805,7 @@ components:
       properties:
         referral_link:
           type: string
-          description: Referral link (web or bot). Bot format uses https://t.me/<bot>&start=<code>
+          description: Referral link (web or bot). Bot format uses https://t.me/<bot>?start=<code>
         code:
           type: string
           description: Referral code used for referrals (8-char for web users, secure payload for Telegram users)
