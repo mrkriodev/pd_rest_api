@@ -224,7 +224,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Referral code returned by /user/ya_referral_link code (8-char for web users, secure payload for Telegram users)
+          description: Referral code returned by /user/ya_referral_link code (8-char for web users; Telegram payload code, e.g. base64 tg_id like Mjc3NzI3Njcz)
       requestBody:
         required: false
         content:
@@ -297,7 +297,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Referral code returned by /user/ya_referral_link code (8-char for web users, secure payload for Telegram users)
+          description: Referral code returned by /user/ya_referral_link code (8-char for web users; Telegram payload code, e.g. base64 tg_id like Mjc3NzI3Njcz)
       requestBody:
         required: true
         content:
@@ -377,7 +377,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Referral code returned by /user/ya_referral_link code (8-char for web users, secure payload for Telegram users)
+          description: Referral code returned by /user/ya_referral_link code (8-char for web users; Telegram payload code, e.g. base64 tg_id like Mjc3NzI3Njcz)
       responses:
         '200':
           description: User ID and JWT token pair
@@ -432,7 +432,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Referral code returned by /user/ya_referral_link code (8-char for web users, secure payload for Telegram users)
+          description: Referral code returned by /user/ya_referral_link code (8-char for web users; Telegram payload code, e.g. base64 tg_id like Mjc3NzI3Njcz)
       responses:
         '200':
           description: User ID and JWT token pair
@@ -524,7 +524,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Referral code returned by /user/ya_referral_link code (8-char for web users, secure payload for Telegram users)
+          description: Referral code returned by /user/ya_referral_link code (8-char for web users; Telegram payload code, e.g. base64 tg_id like Mjc3NzI3Njcz)
       responses:
         '200':
           description: User ID and JWT token pair
@@ -571,7 +571,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Referral code returned by /user/ya_referral_link code (8-char for web users, secure payload for Telegram users)
+          description: Referral code returned by /user/ya_referral_link code (8-char for web users; Telegram payload code, e.g. base64 tg_id like Mjc3NzI3Njcz)
       responses:
         '200':
           description: User ID and JWT token pair
@@ -616,7 +616,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Referral code returned by /user/ya_referral_link code (8-char for web users, secure payload for Telegram users)
+          description: Referral code returned by /user/ya_referral_link code (8-char for web users; Telegram payload code, e.g. base64 tg_id like Mjc3NzI3Njcz)
       requestBody:
         required: true
         content:
@@ -1633,7 +1633,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Referral code returned by /user/ya_referral_link code (8-char for web users, secure payload for Telegram users) for linking new users
+          description: Referral code returned by /user/ya_referral_link code (8-char for web users; Telegram payload code, e.g. base64 tg_id like Mjc3NzI3Njcz) for linking new users
       responses:
         '200':
           description: User ID
@@ -1685,8 +1685,8 @@ paths:
                   description: |
                     Inviter referral code value.
                     Backend first tries exact main_ref match.
-                    If not found, backend resolves inviter by comparing this value with Telegram deeplink HMAC code
-                    generated from TELEGRAM_BOT_TOKEN and users.telegram_id.
+                    If not found, backend resolves inviter using Telegram payload fallback
+                    (plain numeric tg_id, base64 tg_id, and legacy HMAC code when TELEGRAM_BOT_TOKEN is configured).
               required:
                 - tg_id
       responses:
@@ -1812,7 +1812,7 @@ components:
           description: Referral link (web or bot). Bot format uses https://t.me/<bot>?start=<code>
         code:
           type: string
-          description: Referral code used for referrals (8-char for web users, secure payload for Telegram users)
+          description: Referral code used for referrals (8-char for web users; Telegram payload code, e.g. base64 tg_id like Mjc3NzI3Njcz)
 
     FriendRatingEntry:
       type: object

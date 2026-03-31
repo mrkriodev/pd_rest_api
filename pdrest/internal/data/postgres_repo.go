@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"pdrest/internal/domain"
@@ -144,38 +146,81 @@ func (r *PostgresUserRepository) FindUserByTelegramRefCode(ctx context.Context, 
 	if normalized == "" {
 		return nil, fmt.Errorf("ref_code is required")
 	}
-	if strings.TrimSpace(botToken) == "" {
-		return nil, fmt.Errorf("bot_token is required")
-	}
 
-	query := `
-		SELECT user_uuid, telegram_id
-		FROM users
-		WHERE telegram_id IS NOT NULL
-	`
-	rows, err := r.pool.Query(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query telegram users: %w", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
+	// Support legacy/plain deeplink payloads where start parameter contains tg_id
+	// directly or base64-encoded (e.g. "Mjc3NzI3Njcz" -> "277727673").
+	resolveByTGID := func(tgID int64) (*domain.User, error) {
 		var user domain.User
-		if err := rows.Scan(&user.UserID, &user.TelegramID); err != nil {
-			return nil, fmt.Errorf("failed to scan telegram user: %w", err)
+		queryByTGID := `SELECT user_uuid, telegram_id FROM users WHERE telegram_id = $1 LIMIT 1`
+		err := r.pool.QueryRow(ctx, queryByTGID, tgID).Scan(&user.UserID, &user.TelegramID)
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				return nil, nil
+			}
+			return nil, fmt.Errorf("failed to find user by telegram_id: %w", err)
 		}
-		if user.TelegramID == nil {
+		return &user, nil
+	}
+
+	if parsedTGID, err := strconv.ParseInt(strings.TrimSpace(refCode), 10, 64); err == nil && parsedTGID != 0 {
+		user, findErr := resolveByTGID(parsedTGID)
+		if findErr != nil {
+			return nil, findErr
+		}
+		if user != nil {
+			return user, nil
+		}
+	}
+	for _, enc := range []*base64.Encoding{base64.StdEncoding, base64.RawStdEncoding, base64.URLEncoding, base64.RawURLEncoding} {
+		decodedBytes, decodeErr := enc.DecodeString(strings.TrimSpace(refCode))
+		if decodeErr != nil {
 			continue
 		}
-		mac := hmac.New(sha256.New, []byte(botToken))
-		_, _ = mac.Write([]byte(fmt.Sprintf("%d", *user.TelegramID)))
-		code := fmt.Sprintf("%x", mac.Sum(nil))
-		if strings.EqualFold(code, normalized) {
-			return &user, nil
+		decoded := strings.TrimSpace(string(decodedBytes))
+		parsedTGID, parseErr := strconv.ParseInt(decoded, 10, 64)
+		if parseErr != nil || parsedTGID == 0 {
+			continue
+		}
+		user, findErr := resolveByTGID(parsedTGID)
+		if findErr != nil {
+			return nil, findErr
+		}
+		if user != nil {
+			return user, nil
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating telegram users: %w", err)
+
+	trimmedBotToken := strings.TrimSpace(botToken)
+	if trimmedBotToken != "" {
+		query := `
+			SELECT user_uuid, telegram_id
+			FROM users
+			WHERE telegram_id IS NOT NULL
+		`
+		rows, err := r.pool.Query(ctx, query)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query telegram users: %w", err)
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var user domain.User
+			if err := rows.Scan(&user.UserID, &user.TelegramID); err != nil {
+				return nil, fmt.Errorf("failed to scan telegram user: %w", err)
+			}
+			if user.TelegramID == nil {
+				continue
+			}
+			mac := hmac.New(sha256.New, []byte(trimmedBotToken))
+			_, _ = mac.Write([]byte(fmt.Sprintf("%d", *user.TelegramID)))
+			code := fmt.Sprintf("%x", mac.Sum(nil))
+			if strings.EqualFold(code, normalized) {
+				return &user, nil
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return nil, fmt.Errorf("error iterating telegram users: %w", err)
+		}
 	}
 
 	return nil, nil

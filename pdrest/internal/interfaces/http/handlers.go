@@ -2,8 +2,8 @@ package http
 
 import (
 	"context"
-	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -432,10 +432,9 @@ func (h *HTTPHandler) UserReferralLink(c echo.Context) error {
 	if len(webReferralCode) > 8 {
 		webReferralCode = webReferralCode[:8]
 	}
-	botToken := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
 	tgReferralCode := ""
-	if user != nil && user.TelegramID != nil && botToken != "" {
-		tgReferralCode = buildTelegramRefCodeByTGID(botToken, *user.TelegramID)
+	if user != nil && user.TelegramID != nil {
+		tgReferralCode = buildTelegramRefCodeByTGID(*user.TelegramID)
 	}
 	preferredCode := webReferralCode
 	if tgReferralCode != "" {
@@ -462,7 +461,7 @@ func (h *HTTPHandler) UserReferralLink(c echo.Context) error {
 	dest := strings.ToLower(strings.TrimSpace(c.QueryParam("dest")))
 	if dest == "bot" {
 		if tgReferralCode != "" {
-			// For Telegram destination, always use secure deeplink payload derived from tg_id.
+			// For Telegram users, always use tg payload code derived from tg_id.
 			referralCode = tgReferralCode
 		}
 		botName := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_NAME"))
@@ -1554,17 +1553,12 @@ func (h *HTTPHandler) AdminRegisterUser(c echo.Context) error {
 	}
 
 	// Keep main_ref deterministic on admin-created telegram users.
-	botToken := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
-	if botToken == "" {
-		log.Printf("admin/register_user: TELEGRAM_BOT_TOKEN is not configured; cannot create tg deeplink code for tg_id=%d user_uuid=%s", req.TelegramID, newUserID)
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "TELEGRAM_BOT_TOKEN is not configured"})
-	}
-	mainRefCode := buildTelegramRefCodeByTGID(botToken, req.TelegramID)
+	mainRefCode := buildTelegramRefCodeByTGID(req.TelegramID)
 	if err := h.userService.UpdateMainRefIfEmpty(ctx, newUserID, mainRefCode); err != nil {
 		log.Printf("admin/register_user: failed to set main_ref for user_uuid=%s tg_id=%d: %v", newUserID, req.TelegramID, err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
-	log.Printf("admin/register_user: main_ref set to tg HMAC for user_uuid=%s tg_id=%d", newUserID, req.TelegramID)
+	log.Printf("admin/register_user: main_ref set to tg payload code for user_uuid=%s tg_id=%d", newUserID, req.TelegramID)
 
 	if req.Language != nil && strings.TrimSpace(*req.Language) != "" {
 		if err := h.userService.UpdateUserLanguage(ctx, newUserID, *req.Language); err != nil {
@@ -1584,10 +1578,6 @@ func (h *HTTPHandler) AdminRegisterUser(c echo.Context) error {
 			log.Printf("admin/register_user: inviter resolved by main_ref (new_user=%s inviter=%s)", newUserID, inviterUser.UserID)
 		} else {
 			botToken := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
-			if botToken == "" {
-				log.Printf("admin/register_user: TELEGRAM_BOT_TOKEN missing for inviter fallback (new_user=%s ref_code=%s)", newUserID, refCode)
-				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "TELEGRAM_BOT_TOKEN is not configured"})
-			}
 			inviterUser, findErr := h.userService.FindUserByTelegramRefCode(ctx, refCode, botToken)
 			if findErr != nil {
 				if strings.Contains(findErr.Error(), "not found") {
@@ -1627,10 +1617,8 @@ func buildWebRefCode(userUUID string) string {
 	return code
 }
 
-func buildTelegramRefCodeByTGID(botToken string, tgID int64) string {
-	mac := hmac.New(sha256.New, []byte(botToken))
-	_, _ = mac.Write([]byte(strconv.FormatInt(tgID, 10)))
-	return fmt.Sprintf("%x", mac.Sum(nil))
+func buildTelegramRefCodeByTGID(tgID int64) string {
+	return base64.RawStdEncoding.EncodeToString([]byte(strconv.FormatInt(tgID, 10)))
 }
 
 func (h *HTTPHandler) UserAchievements(c echo.Context) error {

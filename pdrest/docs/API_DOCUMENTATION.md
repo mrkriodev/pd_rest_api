@@ -39,6 +39,8 @@ Get referral link for authenticated user (requires JWT).
 **Behavior:**
 - `dest=web` (default): returns `https://<host>/ref/<code>`
 - `dest=bot`: returns `https://t.me/<TELEGRAM_BOT_NAME>?start=<code>`
+- for Telegram users, `code` is Telegram deeplink payload format (base64 of decimal `tg_id`, e.g. `Mjc3NzI3Njcz`)
+- for web-only users, `code` is short web format (`sha256(user_uuid)` first 8 chars)
 - `code` is used as user `main_ref` value
 
 **Response:**
@@ -63,7 +65,7 @@ Admin registration endpoint to create/update user by Telegram ID.
   "first_name": "John",
   "last_name": "Doe",
   "username": "john_doe",
-  "inviter_deeplink_refcode": "Mtad73Az"
+  "inviter_deeplink_refcode": "Mjc3NzI3Njcz"
 }
 ```
 
@@ -71,7 +73,7 @@ Admin registration endpoint to create/update user by Telegram ID.
 - `tg_id` is required
 - `language`, `first_name`, `last_name`, `username`, `inviter_deeplink_refcode` are optional
 - if `inviter_deeplink_refcode` is provided, backend first tries exact inviter `main_ref` code
-- if not found, backend resolves inviter by matching this value to Telegram deeplink HMAC code (based on `TELEGRAM_BOT_TOKEN` and inviter `telegram_id`)
+- if not found, backend resolves inviter by Telegram deeplink payload fallback (plain numeric `tg_id`, base64 `tg_id`, and legacy HMAC code if token is configured)
 - if inviter is found, `referrer_user_uuid` is set for the newly created user (if not already set)
 
 **Response:**
