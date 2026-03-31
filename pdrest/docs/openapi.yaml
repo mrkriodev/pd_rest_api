@@ -1680,8 +1680,9 @@ paths:
                   type: string
                 username:
                   type: string
-                referrer:
+                inviter_tg_id:
                   type: string
+                  description: Inviter Telegram ID (numeric string). If inviter exists, new user will be linked as referral.
               required:
                 - tg_id
       responses:

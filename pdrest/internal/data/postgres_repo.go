@@ -348,6 +348,60 @@ func (r *PostgresUserRepository) ApplyReferralCode(ctx context.Context, userUUID
 	return nil
 }
 
+func (r *PostgresUserRepository) SetReferrerByInviterTGID(ctx context.Context, userUUID string, inviterTGID int64) error {
+	if userUUID == "" {
+		return fmt.Errorf("user_uuid is required")
+	}
+	if inviterTGID == 0 {
+		return fmt.Errorf("inviter_tg_id is required")
+	}
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to begin referral transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+
+	var inviterUUID string
+	queryInviter := `
+		SELECT user_uuid::text
+		FROM users
+		WHERE telegram_id = $1
+		LIMIT 1
+	`
+	if err = tx.QueryRow(ctx, queryInviter, inviterTGID).Scan(&inviterUUID); err != nil {
+		if err == pgx.ErrNoRows {
+			return fmt.Errorf("inviter not found")
+		}
+		return fmt.Errorf("failed to lookup inviter: %w", err)
+	}
+	if inviterUUID == userUUID {
+		return fmt.Errorf("cannot refer self")
+	}
+
+	querySetReferrer := `
+		UPDATE users
+		SET referrer_user_uuid = $2
+		WHERE user_uuid = $1 AND referrer_user_uuid IS NULL
+	`
+	tag, execErr := tx.Exec(ctx, querySetReferrer, userUUID, inviterUUID)
+	if execErr != nil {
+		return fmt.Errorf("failed to set referrer: %w", execErr)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("referrer already set")
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit referral transaction: %w", err)
+	}
+	return nil
+}
+
 func (r *PostgresUserRepository) UpdateUserLanguage(ctx context.Context, userUUID string, language string) error {
 	if userUUID == "" {
 		return fmt.Errorf("user_uuid is required")

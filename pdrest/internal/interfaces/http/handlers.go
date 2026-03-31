@@ -1496,12 +1496,12 @@ func (h *HTTPHandler) AdminRegisterUser(c echo.Context) error {
 	}
 
 	var req struct {
-		TelegramID    int64   `json:"tg_id"`
-		Language      *string `json:"language"`
-		FirstName     *string `json:"first_name"`
-		LastName      *string `json:"last_name"`
-		Username      *string `json:"username"`
-		ReferrerCode  *string `json:"referrer"`
+		TelegramID   int64   `json:"tg_id"`
+		Language     *string `json:"language"`
+		FirstName    *string `json:"first_name"`
+		LastName     *string `json:"last_name"`
+		Username     *string `json:"username"`
+		InviterTGID  *string `json:"inviter_tg_id"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -1535,8 +1535,12 @@ func (h *HTTPHandler) AdminRegisterUser(c echo.Context) error {
 		}
 	}
 
-	if req.ReferrerCode != nil && strings.TrimSpace(*req.ReferrerCode) != "" {
-		if err := h.userService.ApplyReferralCode(ctx, userID, *req.ReferrerCode); err != nil && !strings.Contains(err.Error(), "referrer already set") {
+	if req.InviterTGID != nil && strings.TrimSpace(*req.InviterTGID) != "" {
+		inviterTGID, parseErr := strconv.ParseInt(strings.TrimSpace(*req.InviterTGID), 10, 64)
+		if parseErr != nil || inviterTGID == 0 {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "inviter_tg_id must be numeric"})
+		}
+		if err := h.userService.SetReferrerByInviterTGID(ctx, userID, inviterTGID); err != nil && !strings.Contains(err.Error(), "referrer already set") {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		}
 	}

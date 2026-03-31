@@ -20,6 +20,7 @@ type UserRepository interface {
 	CreateOrUpdateUserWithTelegramInfoByTelegramID(ctx context.Context, telegramID int64, telegramUsername string, telegramFirstName string, telegramLastName string) (string, error)
 	UpdateMainRefIfEmpty(ctx context.Context, userUUID string, mainRef string) error
 	ApplyReferralCode(ctx context.Context, userUUID string, referralCode string) error
+	SetReferrerByInviterTGID(ctx context.Context, userUUID string, inviterTGID int64) error
 	UpdateUserLanguage(ctx context.Context, userUUID string, language string) error
 }
 
@@ -102,6 +103,11 @@ func (r *InMemoryUserRepository) UpdateMainRefIfEmpty(ctx context.Context, userU
 }
 
 func (r *InMemoryUserRepository) ApplyReferralCode(ctx context.Context, userUUID string, referralCode string) error {
+	// In-memory repository doesn't support user updates
+	return nil
+}
+
+func (r *InMemoryUserRepository) SetReferrerByInviterTGID(ctx context.Context, userUUID string, inviterTGID int64) error {
 	// In-memory repository doesn't support user updates
 	return nil
 }

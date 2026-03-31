@@ -142,6 +142,10 @@ func (s *UserService) ApplyReferralCode(ctx context.Context, userUUID string, re
 	return s.repo.ApplyReferralCode(ctx, userUUID, referralCode)
 }
 
+func (s *UserService) SetReferrerByInviterTGID(ctx context.Context, userUUID string, inviterTGID int64) error {
+	return s.repo.SetReferrerByInviterTGID(ctx, userUUID, inviterTGID)
+}
+
 func (s *UserService) UpdateUserLanguage(ctx context.Context, userUUID string, language string) error {
 	return s.repo.UpdateUserLanguage(ctx, userUUID, language)
 }

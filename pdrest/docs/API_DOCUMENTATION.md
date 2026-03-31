@@ -28,6 +28,59 @@ Health check endpoint.
 
 ---
 
+### Referrals
+
+#### GET /api/user/referral_link
+Get referral link for authenticated user (requires JWT).
+
+**Query Parameters:**
+- `dest` (optional): `web` or `bot`
+
+**Behavior:**
+- `dest=web` (default): returns `https://<host>/ref/<code>`
+- `dest=bot`: returns `https://t.me/<TELEGRAM_BOT_NAME>&start=<code>`
+- `code` is used as user `main_ref` value
+
+**Response:**
+```json
+{
+  "referral_link": "https://pumpdumpapp.com/ref/12345678",
+  "code": "12345678"
+}
+```
+
+#### POST /api/admin/register_user
+Admin registration endpoint to create/update user by Telegram ID.
+
+**Headers:**
+- `X-ADMIN-TOKEN` (required)
+
+**Request Body:**
+```json
+{
+  "tg_id": 123456789,
+  "language": "en",
+  "first_name": "John",
+  "last_name": "Doe",
+  "username": "john_doe",
+  "inviter_tg_id": "123456789"
+}
+```
+
+**Notes:**
+- `tg_id` is required
+- `language`, `first_name`, `last_name`, `username`, `inviter_tg_id` are optional
+- if `inviter_tg_id` is provided and inviter exists, `referrer_user_uuid` is set for the newly created user (if not already set)
+
+**Response:**
+```json
+{
+  "userId": "b9aaef6f-723f-46c0-b223-ba818f377e50"
+}
+```
+
+---
+
 ### Achievements
 
 #### GET /api/user/all_achivements
