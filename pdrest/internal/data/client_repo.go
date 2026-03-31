@@ -9,6 +9,7 @@ type UserRepository interface {
 	GetLastLogin(uuid string) (*domain.UserLastLogin, error)
 	GetProfile(uuid string) (*domain.UserProfile, error)
 	GetUserByUUID(ctx context.Context, userUUID string) (*domain.User, error)
+	FindUserByMainRef(ctx context.Context, refCode string) (*domain.User, error)
 	GetUserByGoogleID(googleID string) (*domain.User, error)
 	GetUserByTelegramID(telegramID int64) (*domain.User, error)
 	FindUserByTelegramRefCode(ctx context.Context, refCode string, botToken string) (*domain.User, error)
@@ -21,6 +22,7 @@ type UserRepository interface {
 	CreateOrUpdateUserWithTelegramInfoByTelegramID(ctx context.Context, telegramID int64, telegramUsername string, telegramFirstName string, telegramLastName string) (string, error)
 	UpdateMainRefIfEmpty(ctx context.Context, userUUID string, mainRef string) error
 	ApplyReferralCode(ctx context.Context, userUUID string, referralCode string) error
+	SetReferrerByInviterUUID(ctx context.Context, userUUID string, inviterUUID string) error
 	SetReferrerByInviterTGID(ctx context.Context, userUUID string, inviterTGID int64) error
 	UpdateUserLanguage(ctx context.Context, userUUID string, language string) error
 }
@@ -49,6 +51,11 @@ func (r *InMemoryUserRepository) GetProfile(uuid string) (*domain.UserProfile, e
 }
 
 func (r *InMemoryUserRepository) GetUserByUUID(ctx context.Context, userUUID string) (*domain.User, error) {
+	// In-memory repository doesn't support user lookup
+	return nil, nil
+}
+
+func (r *InMemoryUserRepository) FindUserByMainRef(ctx context.Context, refCode string) (*domain.User, error) {
 	// In-memory repository doesn't support user lookup
 	return nil, nil
 }
@@ -109,6 +116,11 @@ func (r *InMemoryUserRepository) UpdateMainRefIfEmpty(ctx context.Context, userU
 }
 
 func (r *InMemoryUserRepository) ApplyReferralCode(ctx context.Context, userUUID string, referralCode string) error {
+	// In-memory repository doesn't support user updates
+	return nil
+}
+
+func (r *InMemoryUserRepository) SetReferrerByInviterUUID(ctx context.Context, userUUID string, inviterUUID string) error {
 	// In-memory repository doesn't support user updates
 	return nil
 }

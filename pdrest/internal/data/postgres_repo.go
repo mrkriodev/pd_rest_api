@@ -87,6 +87,24 @@ func (r *PostgresUserRepository) GetUserByUUID(ctx context.Context, userUUID str
 	return &result, nil
 }
 
+func (r *PostgresUserRepository) FindUserByMainRef(ctx context.Context, refCode string) (*domain.User, error) {
+	normalized := strings.TrimSpace(refCode)
+	if normalized == "" {
+		return nil, fmt.Errorf("ref_code is required")
+	}
+
+	var result domain.User
+	query := `SELECT user_uuid, telegram_id FROM users WHERE main_ref = $1 LIMIT 1`
+	err := r.pool.QueryRow(ctx, query, normalized).Scan(&result.UserID, &result.TelegramID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to find user by main_ref: %w", err)
+	}
+	return &result, nil
+}
+
 func (r *PostgresUserRepository) GetUserByGoogleID(googleID string) (*domain.User, error) {
 	ctx := context.Background()
 
@@ -373,19 +391,6 @@ func (r *PostgresUserRepository) ApplyReferralCode(ctx context.Context, userUUID
 		return fmt.Errorf("referrer already set")
 	}
 
-	queryAppend := `
-		UPDATE users
-		SET add_refs = (
-			SELECT ARRAY(
-				SELECT DISTINCT unnest(add_refs || $2::text[])
-			)
-		)
-		WHERE user_uuid = $1
-	`
-	if _, err = tx.Exec(ctx, queryAppend, referrerUUID, userUUID); err != nil {
-		return fmt.Errorf("failed to append add_refs: %w", err)
-	}
-
 	if err = tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit referral transaction: %w", err)
 	}
@@ -442,6 +447,32 @@ func (r *PostgresUserRepository) SetReferrerByInviterTGID(ctx context.Context, u
 
 	if err = tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit referral transaction: %w", err)
+	}
+	return nil
+}
+
+func (r *PostgresUserRepository) SetReferrerByInviterUUID(ctx context.Context, userUUID string, inviterUUID string) error {
+	if userUUID == "" {
+		return fmt.Errorf("user_uuid is required")
+	}
+	if strings.TrimSpace(inviterUUID) == "" {
+		return fmt.Errorf("inviter_uuid is required")
+	}
+	if inviterUUID == userUUID {
+		return fmt.Errorf("cannot refer self")
+	}
+
+	querySetReferrer := `
+		UPDATE users
+		SET referrer_user_uuid = $2
+		WHERE user_uuid = $1 AND referrer_user_uuid IS NULL
+	`
+	tag, err := r.pool.Exec(ctx, querySetReferrer, userUUID, inviterUUID)
+	if err != nil {
+		return fmt.Errorf("failed to set referrer: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("referrer already set")
 	}
 	return nil
 }

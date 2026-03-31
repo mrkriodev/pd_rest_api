@@ -81,6 +81,17 @@ func (s *UserService) FindUserByTelegramRefCode(ctx context.Context, refCode str
 	return result, nil
 }
 
+func (s *UserService) FindUserByMainRef(ctx context.Context, refCode string) (*domain.User, error) {
+	result, err := s.repo.FindUserByMainRef(ctx, refCode)
+	if err != nil {
+		return nil, err
+	}
+	if result == nil {
+		return nil, errors.New("user not found")
+	}
+	return result, nil
+}
+
 func (s *UserService) GetUserBySessionID(ctx context.Context, sessionID string) (*domain.User, error) {
 	result, err := s.repo.GetUserBySessionID(ctx, sessionID)
 	if err != nil {
@@ -155,6 +166,10 @@ func (s *UserService) ApplyReferralCode(ctx context.Context, userUUID string, re
 
 func (s *UserService) SetReferrerByInviterTGID(ctx context.Context, userUUID string, inviterTGID int64) error {
 	return s.repo.SetReferrerByInviterTGID(ctx, userUUID, inviterTGID)
+}
+
+func (s *UserService) SetReferrerByInviterUUID(ctx context.Context, userUUID string, inviterUUID string) error {
+	return s.repo.SetReferrerByInviterUUID(ctx, userUUID, inviterUUID)
 }
 
 func (s *UserService) UpdateUserLanguage(ctx context.Context, userUUID string, language string) error {

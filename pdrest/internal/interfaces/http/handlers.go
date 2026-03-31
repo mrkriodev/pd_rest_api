@@ -90,7 +90,7 @@ func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingServi
 	user.GET("/profile/:uuid", h.UserProfile)
 	user.GET("/assets", h.UserAssets)
 	user.POST("/assets", h.UserAssets)
-	user.GET("/referral_link", h.UserReferralLink)
+	user.GET("/ya_referral_link", h.UserReferralLink)
 	user.GET("/friends_ratings", h.UserFriendsRatings)
 	user.GET("/achievements", h.UserAchievements)
 	user.GET("/achievement", h.UserAchievementByID)
@@ -431,6 +431,15 @@ func (h *HTTPHandler) UserReferralLink(c echo.Context) error {
 	if len(webReferralCode) > 8 {
 		webReferralCode = webReferralCode[:8]
 	}
+	botToken := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
+	tgReferralCode := ""
+	if user != nil && user.TelegramID != nil && botToken != "" {
+		tgReferralCode = buildTelegramRefCodeByTGID(botToken, *user.TelegramID)
+	}
+	preferredCode := webReferralCode
+	if tgReferralCode != "" {
+		preferredCode = tgReferralCode
+	}
 
 	referralCode := ""
 	if user != nil && user.MainRef != nil {
@@ -438,23 +447,18 @@ func (h *HTTPHandler) UserReferralLink(c echo.Context) error {
 	}
 	// Normalize legacy/invalid values that can leak raw UUID/hash.
 	if strings.EqualFold(referralCode, userUUID) || strings.EqualFold(referralCode, fullWebHash) {
-		referralCode = webReferralCode
+		referralCode = preferredCode
 	}
 	if referralCode == "" {
-		referralCode = webReferralCode
+		referralCode = preferredCode
 	}
 
 	referralLink := fmt.Sprintf("https://%s/ref/%s", host, referralCode)
 	dest := strings.ToLower(strings.TrimSpace(c.QueryParam("dest")))
 	if dest == "bot" {
-		if user != nil && user.TelegramID != nil {
-			botToken := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
-			if botToken != "" {
-				// For Telegram destination, use secure deeplink payload derived from tg_id.
-				mac := hmac.New(sha256.New, []byte(botToken))
-				_, _ = mac.Write([]byte(strconv.FormatInt(*user.TelegramID, 10)))
-				referralCode = fmt.Sprintf("%x", mac.Sum(nil))
-			}
+		if tgReferralCode != "" {
+			// For Telegram destination, always use secure deeplink payload derived from tg_id.
+			referralCode = tgReferralCode
 		}
 		botName := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_NAME"))
 		if botName == "" {
@@ -1538,6 +1542,16 @@ func (h *HTTPHandler) AdminRegisterUser(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	// Keep main_ref deterministic on admin-created telegram users.
+	mainRefCode := buildWebRefCode(userID)
+	botToken := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
+	if botToken != "" {
+		mainRefCode = buildTelegramRefCodeByTGID(botToken, req.TelegramID)
+	}
+	if err := h.userService.UpdateMainRefIfEmpty(ctx, userID, mainRefCode); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
 	if req.Language != nil && strings.TrimSpace(*req.Language) != "" {
 		if err := h.userService.UpdateUserLanguage(ctx, userID, *req.Language); err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -1546,33 +1560,52 @@ func (h *HTTPHandler) AdminRegisterUser(c echo.Context) error {
 
 	if req.InviterDeeplinkRefcode != nil && strings.TrimSpace(*req.InviterDeeplinkRefcode) != "" {
 		refCode := strings.TrimSpace(*req.InviterDeeplinkRefcode)
-		err := h.userService.ApplyReferralCode(ctx, userID, refCode)
-		if err != nil && !strings.Contains(err.Error(), "referrer already set") {
-			if strings.Contains(err.Error(), "referral code not found") {
-				botToken := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
-				if botToken == "" {
-					return c.JSON(http.StatusInternalServerError, map[string]string{"error": "TELEGRAM_BOT_TOKEN is not configured"})
-				}
-				inviterUser, findErr := h.userService.FindUserByTelegramRefCode(ctx, refCode, botToken)
-				if findErr != nil {
-					if strings.Contains(findErr.Error(), "not found") {
-						return c.JSON(http.StatusBadRequest, map[string]string{"error": "inviter_deeplink_refcode is invalid"})
-					}
-					return c.JSON(http.StatusInternalServerError, map[string]string{"error": findErr.Error()})
-				}
-				if inviterUser == nil || inviterUser.TelegramID == nil {
+		inviterUser, findErr := h.userService.FindUserByMainRef(ctx, refCode)
+		if findErr == nil && inviterUser != nil {
+			if setErr := h.userService.SetReferrerByInviterUUID(ctx, userID, inviterUser.UserID); setErr != nil && !strings.Contains(setErr.Error(), "referrer already set") {
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": setErr.Error()})
+			}
+		} else {
+			botToken := strings.TrimSpace(os.Getenv("TELEGRAM_BOT_TOKEN"))
+			if botToken == "" {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": "TELEGRAM_BOT_TOKEN is not configured"})
+			}
+			inviterUser, findErr := h.userService.FindUserByTelegramRefCode(ctx, refCode, botToken)
+			if findErr != nil {
+				if strings.Contains(findErr.Error(), "not found") {
 					return c.JSON(http.StatusBadRequest, map[string]string{"error": "inviter_deeplink_refcode is invalid"})
 				}
-				if setErr := h.userService.SetReferrerByInviterTGID(ctx, userID, *inviterUser.TelegramID); setErr != nil && !strings.Contains(setErr.Error(), "referrer already set") {
-					return c.JSON(http.StatusBadRequest, map[string]string{"error": setErr.Error()})
-				}
-			} else {
-				return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": findErr.Error()})
+			}
+			if inviterUser == nil {
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": "inviter_deeplink_refcode is invalid"})
+			}
+			// Persist matched deeplink code for inviter, so next referrals resolve directly by main_ref.
+			if updateErr := h.userService.UpdateMainRefIfEmpty(ctx, inviterUser.UserID, refCode); updateErr != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": updateErr.Error()})
+			}
+			if setErr := h.userService.SetReferrerByInviterUUID(ctx, userID, inviterUser.UserID); setErr != nil && !strings.Contains(setErr.Error(), "referrer already set") {
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": setErr.Error()})
 			}
 		}
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"userId": userID})
+}
+
+func buildWebRefCode(userUUID string) string {
+	webCodeHash := sha256.Sum256([]byte(userUUID))
+	code := fmt.Sprintf("%x", webCodeHash[:])
+	if len(code) > 8 {
+		code = code[:8]
+	}
+	return code
+}
+
+func buildTelegramRefCodeByTGID(botToken string, tgID int64) string {
+	mac := hmac.New(sha256.New, []byte(botToken))
+	_, _ = mac.Write([]byte(strconv.FormatInt(tgID, 10)))
+	return fmt.Sprintf("%x", mac.Sum(nil))
 }
 
 func (h *HTTPHandler) UserAchievements(c echo.Context) error {

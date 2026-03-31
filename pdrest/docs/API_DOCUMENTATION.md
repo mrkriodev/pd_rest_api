@@ -30,7 +30,7 @@ Health check endpoint.
 
 ### Referrals
 
-#### GET /api/user/referral_link
+#### GET /api/user/ya_referral_link
 Get referral link for authenticated user (requires JWT).
 
 **Query Parameters:**

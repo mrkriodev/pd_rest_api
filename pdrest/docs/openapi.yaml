@@ -224,7 +224,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Referral code returned by /user/referral_link code (8-char for web users, secure payload for Telegram users)
+          description: Referral code returned by /user/ya_referral_link code (8-char for web users, secure payload for Telegram users)
       requestBody:
         required: false
         content:
@@ -297,7 +297,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Referral code returned by /user/referral_link code (8-char for web users, secure payload for Telegram users)
+          description: Referral code returned by /user/ya_referral_link code (8-char for web users, secure payload for Telegram users)
       requestBody:
         required: true
         content:
@@ -377,7 +377,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Referral code returned by /user/referral_link code (8-char for web users, secure payload for Telegram users)
+          description: Referral code returned by /user/ya_referral_link code (8-char for web users, secure payload for Telegram users)
       responses:
         '200':
           description: User ID and JWT token pair
@@ -432,7 +432,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Referral code returned by /user/referral_link code (8-char for web users, secure payload for Telegram users)
+          description: Referral code returned by /user/ya_referral_link code (8-char for web users, secure payload for Telegram users)
       responses:
         '200':
           description: User ID and JWT token pair
@@ -524,7 +524,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Referral code returned by /user/referral_link code (8-char for web users, secure payload for Telegram users)
+          description: Referral code returned by /user/ya_referral_link code (8-char for web users, secure payload for Telegram users)
       responses:
         '200':
           description: User ID and JWT token pair
@@ -571,7 +571,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Referral code returned by /user/referral_link code (8-char for web users, secure payload for Telegram users)
+          description: Referral code returned by /user/ya_referral_link code (8-char for web users, secure payload for Telegram users)
       responses:
         '200':
           description: User ID and JWT token pair
@@ -616,7 +616,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Referral code returned by /user/referral_link code (8-char for web users, secure payload for Telegram users)
+          description: Referral code returned by /user/ya_referral_link code (8-char for web users, secure payload for Telegram users)
       requestBody:
         required: true
         content:
@@ -784,7 +784,7 @@ paths:
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
 
-  /user/referral_link:
+  /user/ya_referral_link:
     get:
       summary: Get referral link for the authenticated user
       tags:
@@ -1633,7 +1633,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Referral code returned by /user/referral_link code (8-char for web users, secure payload for Telegram users) for linking new users
+          description: Referral code returned by /user/ya_referral_link code (8-char for web users, secure payload for Telegram users) for linking new users
       responses:
         '200':
           description: User ID
