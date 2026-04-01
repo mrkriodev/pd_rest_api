@@ -409,20 +409,26 @@ func (h *HTTPHandler) GetUserIDBySession(c echo.Context) error {
 
 func (h *HTTPHandler) UserReferralLink(c echo.Context) error {
 	if h.userService == nil {
+		log.Printf("ya_referral_link: user service unavailable")
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for referral link"})
 	}
 
 	userUUID, ok := c.Get("user_uuid").(string)
 	if !ok || userUUID == "" {
+		log.Printf("ya_referral_link: unauthorized request (missing user_uuid)")
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 	}
+	dest := strings.ToLower(strings.TrimSpace(c.QueryParam("dest")))
+	log.Printf("ya_referral_link: request started user_uuid=%s dest=%s", userUUID, dest)
 
 	ctx := context.Background()
 	user, err := h.userService.GetUserByUUID(ctx, userUUID)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
+			log.Printf("ya_referral_link: user not found user_uuid=%s", userUUID)
 			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 		}
+		log.Printf("ya_referral_link: failed to load user user_uuid=%s: %v", userUUID, err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
@@ -458,7 +464,6 @@ func (h *HTTPHandler) UserReferralLink(c echo.Context) error {
 	}
 
 	referralLink := fmt.Sprintf("https://%s/ref/%s", host, referralCode)
-	dest := strings.ToLower(strings.TrimSpace(c.QueryParam("dest")))
 	if dest == "bot" {
 		if tgReferralCode != "" {
 			// For Telegram users, always use tg payload code derived from tg_id.
@@ -472,8 +477,10 @@ func (h *HTTPHandler) UserReferralLink(c echo.Context) error {
 	}
 
 	if err := h.userService.UpdateMainRefIfEmpty(ctx, userUUID, referralCode); err != nil {
+		log.Printf("ya_referral_link: failed to update main_ref user_uuid=%s code=%s: %v", userUUID, referralCode, err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+	log.Printf("ya_referral_link: success user_uuid=%s dest=%s code=%s", userUUID, dest, referralCode)
 
 	return c.JSON(http.StatusOK, map[string]string{
 		"referral_link": referralLink,
@@ -1464,15 +1471,19 @@ func (h *HTTPHandler) TelegramCallback(c echo.Context) error {
 
 func (h *HTTPHandler) AvailableEvents(c echo.Context) error {
 	if h.eventService == nil {
+		log.Printf("available_events: event service unavailable")
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for events"})
 	}
 
+	log.Printf("available_events: request started")
 	ctx := context.Background()
 	tag := "competition"
 	events, err := h.eventService.GetAvailableEvents(ctx, tag)
 	if err != nil {
+		log.Printf("available_events: failed to fetch events (tag=%s): %v", tag, err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+	log.Printf("available_events: success tag=%s count=%d", tag, len(events))
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"events": events,
