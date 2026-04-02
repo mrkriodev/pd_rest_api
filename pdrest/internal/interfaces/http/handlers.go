@@ -689,9 +689,11 @@ func (h *HTTPHandler) ClaimBet(c echo.Context) error {
 	if won && h.achievementService != nil {
 		ids, err := h.achievementService.UpdateWinAchievementsOnBet(ctx, userUUID)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			// Bet claim is already completed successfully; achievement sync must not break response.
+			log.Printf("claim_bet: achievement update failed user_uuid=%s bet_id=%d: %v", userUUID, req.BetID, err)
+		} else {
+			newAchievementIDs = ids
 		}
-		newAchievementIDs = ids
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
@@ -1616,7 +1618,23 @@ func (h *HTTPHandler) AdminRegisterUser(c echo.Context) error {
 	}
 
 	log.Printf("admin/register_user: success user_uuid=%s tg_id=%d", newUserID, req.TelegramID)
-	return c.JSON(http.StatusOK, map[string]string{"userId": newUserID})
+	if h.authService == nil {
+		log.Printf("admin/register_user: auth service unavailable, returning userId only user_uuid=%s", newUserID)
+		return c.JSON(http.StatusOK, map[string]string{"userId": newUserID})
+	}
+
+	tokenPair, err := h.authService.GenerateTokenPair(newUserID)
+	if err != nil {
+		log.Printf("admin/register_user: failed to generate token pair for user_uuid=%s: %v", newUserID, err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate token"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"userId":        newUserID,
+		"access_token":  tokenPair.AccessToken,
+		"refresh_token": tokenPair.RefreshToken,
+		"expires_in":    tokenPair.ExpiresIn,
+	})
 }
 
 func buildWebRefCode(userUUID string) string {
@@ -1682,20 +1700,31 @@ func (h *HTTPHandler) UserAchievementByID(c echo.Context) error {
 
 func (h *HTTPHandler) UserEvents(c echo.Context) error {
 	if h.eventService == nil {
+		log.Printf("user/events: event service unavailable")
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database connection required for events"})
 	}
 
 	// Get user UUID from context (set by JWT middleware)
 	userUUID, ok := c.Get("user_uuid").(string)
 	if !ok || userUUID == "" {
+		log.Printf("user/events: unauthorized request (missing user_uuid)")
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 	}
+	log.Printf("user/events: request started user_uuid=%s", userUUID)
 
 	ctx := context.Background()
 	result, err := h.eventService.GetUserEvents(ctx, userUUID)
 	if err != nil {
+		log.Printf("user/events: failed user_uuid=%s: %v", userUUID, err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+	if result == nil {
+		result = &domain.UserEventsResponse{Events: []domain.UserEventEntry{}}
+	}
+	if result.Events == nil {
+		result.Events = []domain.UserEventEntry{}
+	}
+	log.Printf("user/events: success user_uuid=%s count=%d", userUUID, len(result.Events))
 
 	return c.JSON(http.StatusOK, result)
 }

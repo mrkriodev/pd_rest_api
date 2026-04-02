@@ -79,5 +79,12 @@ func (s *RatingService) GetFriendsRatings(ctx context.Context, userUUID string, 
 		offset = 0
 	}
 
-	return s.repo.GetFriendsRatings(ctx, userUUID, limit, offset)
+	entries, err := s.repo.GetFriendsRatings(ctx, userUUID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	if entries == nil {
+		entries = make([]domain.FriendRatingEntry, 0)
+	}
+	return entries, nil
 }

@@ -38,6 +38,6 @@ type GlobalRatingEntry struct {
 
 // FriendRatingEntry represents aggregated points for a referred friend.
 type FriendRatingEntry struct {
-	UserID string `json:"userId"`
-	Value  int64  `json:"value"`
+	UserName string `json:"userName"`
+	Value    int64  `json:"value"`
 }

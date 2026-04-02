@@ -1699,6 +1699,18 @@ paths:
                 properties:
                   userId:
                     type: string
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  expires_in:
+                    type: integer
+                    format: int64
+                required:
+                  - userId
+                  - access_token
+                  - refresh_token
+                  - expires_in
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1817,9 +1829,9 @@ components:
     FriendRatingEntry:
       type: object
       properties:
-        userId:
+        userName:
           type: string
-          description: Referred user ID
+          description: Friend display name (Google name, Telegram username/fullname, or Unknown)
         value:
           type: integer
           format: int64

@@ -110,6 +110,11 @@ func (s *AchievementService) UpdateWinAchievementsOnBet(ctx context.Context, use
 	}
 
 	newAchievements := make([]string, 0)
+	wins, err := s.betRepo.GetWinningBetsByUser(ctx, userUUID)
+	if err != nil {
+		return nil, err
+	}
+	winsCount := len(wins)
 
 	achievementIDs := []string{
 		"first_bet_success",
@@ -141,16 +146,19 @@ func (s *AchievementService) UpdateWinAchievementsOnBet(ctx context.Context, use
 		if needSteps <= 0 {
 			return nil, errors.New("achievement has invalid steps")
 		}
+		nextSteps := winsCount
+		if nextSteps > needSteps {
+			nextSteps = needSteps
+		}
+		justCompleted := winsCount >= needSteps
 
 		if status == nil {
-			stepsGot := 1
-			if stepsGot > needSteps {
-				stepsGot = needSteps
-			}
-			if err := s.repo.UpsertUserAchievementProgress(ctx, userUUID, achievementID, stepsGot, needSteps, false); err != nil {
+			if err := s.repo.UpsertUserAchievementProgress(ctx, userUUID, achievementID, nextSteps, needSteps, false); err != nil {
 				return nil, err
 			}
-			newAchievements = append(newAchievements, achievementID)
+			if justCompleted {
+				newAchievements = append(newAchievements, achievementID)
+			}
 			continue
 		}
 
@@ -162,16 +170,18 @@ func (s *AchievementService) UpdateWinAchievementsOnBet(ctx context.Context, use
 		if currentNeed <= 0 {
 			currentNeed = needSteps
 		}
-		if status.StepsGot >= currentNeed {
-			continue
-		}
-
-		nextSteps := status.StepsGot + 1
+		prevCompleted := status.StepsGot >= currentNeed
+		nextSteps = winsCount
 		if nextSteps > currentNeed {
 			nextSteps = currentNeed
 		}
-		if err := s.repo.UpsertUserAchievementProgress(ctx, userUUID, achievementID, nextSteps, currentNeed, false); err != nil {
-			return nil, err
+		if nextSteps != status.StepsGot || status.NeedSteps != currentNeed {
+			if err := s.repo.UpsertUserAchievementProgress(ctx, userUUID, achievementID, nextSteps, currentNeed, false); err != nil {
+				return nil, err
+			}
+		}
+		if !prevCompleted && nextSteps >= currentNeed {
+			newAchievements = append(newAchievements, achievementID)
 		}
 	}
 

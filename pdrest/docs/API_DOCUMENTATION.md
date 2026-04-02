@@ -79,7 +79,10 @@ Admin registration endpoint to create/update user by Telegram ID.
 **Response:**
 ```json
 {
-  "userId": "b9aaef6f-723f-46c0-b223-ba818f377e50"
+  "userId": "b9aaef6f-723f-46c0-b223-ba818f377e50",
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "expires_in": 3600
 }
 ```
 

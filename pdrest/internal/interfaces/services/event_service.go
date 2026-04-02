@@ -70,6 +70,9 @@ func (s *EventService) GetUserEvents(ctx context.Context, userUUID string) (*dom
 	if err != nil {
 		return nil, err
 	}
+	if events == nil {
+		events = make([]domain.UserEventEntry, 0)
+	}
 
 	return &domain.UserEventsResponse{
 		Events: events,
@@ -209,17 +212,15 @@ func (s *EventService) TakeEventPrize(ctx context.Context, userUUID string, even
 	}
 
 	var achievementImageURL string
-	if prizeValueID != nil {
-		achievement, err := s.achievementRepo.GetAchievementByPrizeID(ctx, *prizeValueID)
-		if err != nil {
+	achievement, err := s.achievementRepo.GetAchievementByPrizeID(ctx, *prizeValueID)
+	if err != nil {
+		return nil, "", err
+	}
+	if achievement != nil {
+		if err := s.achievementRepo.UpsertUserAchievementProgress(ctx, userUUID, achievement.ID, 1, 1, true); err != nil {
 			return nil, "", err
 		}
-		if achievement != nil {
-			if err := s.achievementRepo.UpsertUserAchievementProgress(ctx, userUUID, achievement.ID, 1, 1, true); err != nil {
-				return nil, "", err
-			}
-			achievementImageURL = achievement.ImageURL
-		}
+		achievementImageURL = achievement.ImageURL
 	}
 
 	return prize, achievementImageURL, nil

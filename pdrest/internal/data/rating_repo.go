@@ -130,11 +130,15 @@ func (r *PostgresRatingRepository) GetFriendsRatings(ctx context.Context, userUU
 	query := `
 		SELECT 
 			u.user_uuid::text AS friend_uuid,
-			COALESCE(SUM(r.points), 0)::BIGINT AS total_points
+			COALESCE(SUM(r.points), 0)::BIGINT AS total_points,
+			u.google_name,
+			u.telegram_username,
+			u.telegram_first_name,
+			u.telegram_last_name
 		FROM users u
 		LEFT JOIN rating r ON r.user_uuid = u.user_uuid
 		WHERE u.referrer_user_uuid = $1
-		GROUP BY u.user_uuid
+		GROUP BY u.user_uuid, u.google_name, u.telegram_username, u.telegram_first_name, u.telegram_last_name
 		ORDER BY total_points DESC, friend_uuid ASC
 		LIMIT $2 OFFSET $3
 	`
@@ -148,9 +152,42 @@ func (r *PostgresRatingRepository) GetFriendsRatings(ctx context.Context, userUU
 	var entries []domain.FriendRatingEntry
 	for rows.Next() {
 		var entry domain.FriendRatingEntry
-		if err := rows.Scan(&entry.UserID, &entry.Value); err != nil {
+		var friendUUID string
+		var totalPoints int64
+		var googleName sql.NullString
+		var telegramUsername sql.NullString
+		var telegramFirstName sql.NullString
+		var telegramLastName sql.NullString
+
+		if err := rows.Scan(&friendUUID, &totalPoints, &googleName, &telegramUsername, &telegramFirstName, &telegramLastName); err != nil {
 			return nil, fmt.Errorf("failed to scan friends rating entry: %w", err)
 		}
+
+		displayName := ""
+		if googleName.Valid && googleName.String != "" {
+			displayName = googleName.String
+		} else if telegramUsername.Valid && telegramUsername.String != "" {
+			displayName = telegramUsername.String
+		} else {
+			first := ""
+			last := ""
+			if telegramFirstName.Valid {
+				first = telegramFirstName.String
+			}
+			if telegramLastName.Valid {
+				last = telegramLastName.String
+			}
+			combined := strings.TrimSpace(strings.TrimSpace(first) + " " + strings.TrimSpace(last))
+			if combined != "" {
+				displayName = combined
+			}
+		}
+		if displayName == "" {
+			displayName = "Unknown"
+		}
+
+		entry.UserName = displayName
+		entry.Value = totalPoints
 		entries = append(entries, entry)
 	}
 
