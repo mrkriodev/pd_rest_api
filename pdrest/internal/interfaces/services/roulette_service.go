@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"math/rand"
 	"pdrest/internal/data"
 	"pdrest/internal/domain"
@@ -45,27 +46,33 @@ func NewRouletteService(r data.RouletteRepository, userRepo data.UserRepository,
 // GetRouletteStatus gets the current status of roulette by preauth token
 // Allows used tokens (after spin) but checks expiration
 func (s *RouletteService) GetRouletteStatus(ctx context.Context, preauthToken string) (*domain.GetRouletteStatusResponse, error) {
+	log.Printf("roulette/service: GetRouletteStatus start preauth_token_present=%t", strings.TrimSpace(preauthToken) != "")
 	// Get preauth token (without validating if it's used, since we want to check status after spin)
 	token, err := s.repo.GetPreauthToken(ctx, preauthToken)
 	if err != nil {
+		log.Printf("roulette/service: GetRouletteStatus failed to load preauth token: %v", err)
 		return nil, fmt.Errorf("failed to get preauth token: %w", err)
 	}
 	if token == nil {
+		log.Printf("roulette/service: GetRouletteStatus preauth token not found")
 		return nil, fmt.Errorf("preauth token not found")
 	}
 
 	// Check if token is expired (but allow used tokens)
 	nowMs := time.Now().UTC().UnixMilli()
 	if token.ExpiresAt < nowMs {
+		log.Printf("roulette/service: GetRouletteStatus preauth token expired token_id=%d", token.ID)
 		return nil, fmt.Errorf("preauth token expired")
 	}
 
 	// Get config
 	config, err := s.repo.GetRouletteConfigByID(ctx, token.RouletteConfigID)
 	if err != nil {
+		log.Printf("roulette/service: GetRouletteStatus failed to load config id=%d: %v", token.RouletteConfigID, err)
 		return nil, fmt.Errorf("failed to get roulette config: %w", err)
 	}
 	if config == nil {
+		log.Printf("roulette/service: GetRouletteStatus config not found id=%d", token.RouletteConfigID)
 		return &domain.GetRouletteStatusResponse{
 			CanSpin: false,
 		}, nil
@@ -74,6 +81,7 @@ func (s *RouletteService) GetRouletteStatus(ctx context.Context, preauthToken st
 	// Get roulette by preauth token
 	roulette, err := s.repo.GetRouletteByPreauthToken(ctx, token.ID)
 	if err != nil {
+		log.Printf("roulette/service: GetRouletteStatus failed to load roulette by token_id=%d: %v", token.ID, err)
 		return nil, fmt.Errorf("failed to get roulette: %w", err)
 	}
 
@@ -87,6 +95,7 @@ func (s *RouletteService) GetRouletteStatus(ctx context.Context, preauthToken st
 		// User hasn't started yet
 		response.RemainingSpins = config.MaxSpins
 		response.CanSpin = true
+		log.Printf("roulette/service: GetRouletteStatus success token_id=%d state=new remaining=%d", token.ID, response.RemainingSpins)
 		return response, nil
 	}
 
@@ -102,21 +111,26 @@ func (s *RouletteService) GetRouletteStatus(ctx context.Context, preauthToken st
 		response.RemainingSpins = config.MaxSpins - roulette.SpinNumber
 		response.CanSpin = response.RemainingSpins > 0
 	}
+	log.Printf("roulette/service: GetRouletteStatus success token_id=%d spin_number=%d prize_taken=%t remaining=%d", token.ID, roulette.SpinNumber, roulette.PrizeTaken, response.RemainingSpins)
 
 	return response, nil
 }
 
 // GetStartupRouletteStatus returns status for startup roulette when no preauth token exists yet.
 func (s *RouletteService) GetStartupRouletteStatus(ctx context.Context) (*domain.GetRouletteStatusResponse, error) {
+	log.Printf("roulette/service: GetStartupRouletteStatus start")
 	config, err := s.repo.GetRouletteConfigByType(ctx, domain.RouletteTypeOnStart, "startup")
 	if err != nil {
+		log.Printf("roulette/service: GetStartupRouletteStatus failed to load config: %v", err)
 		return nil, fmt.Errorf("failed to get roulette config: %w", err)
 	}
 	if config == nil || !config.IsActive {
+		log.Printf("roulette/service: GetStartupRouletteStatus inactive or missing config")
 		return &domain.GetRouletteStatusResponse{
 			CanSpin: false,
 		}, nil
 	}
+	log.Printf("roulette/service: GetStartupRouletteStatus success config_id=%d max_spins=%d", config.ID, config.MaxSpins)
 
 	return &domain.GetRouletteStatusResponse{
 		Config:         config,
@@ -128,12 +142,15 @@ func (s *RouletteService) GetStartupRouletteStatus(ctx context.Context) (*domain
 
 // GetRouletteStatusByUser gets the current status of roulette by user UUID and roulette config ID
 func (s *RouletteService) GetRouletteStatusByUser(ctx context.Context, userUUID string, rouletteConfigID int) (*domain.GetRouletteStatusResponse, error) {
+	log.Printf("roulette/service: GetRouletteStatusByUser start user_uuid=%s config_id=%d", userUUID, rouletteConfigID)
 	// Get config
 	config, err := s.repo.GetRouletteConfigByID(ctx, rouletteConfigID)
 	if err != nil {
+		log.Printf("roulette/service: GetRouletteStatusByUser failed to load config id=%d: %v", rouletteConfigID, err)
 		return nil, fmt.Errorf("failed to get roulette config: %w", err)
 	}
 	if config == nil {
+		log.Printf("roulette/service: GetRouletteStatusByUser config not found id=%d", rouletteConfigID)
 		return &domain.GetRouletteStatusResponse{
 			CanSpin: false,
 		}, nil
@@ -142,6 +159,7 @@ func (s *RouletteService) GetRouletteStatusByUser(ctx context.Context, userUUID 
 	// Get roulette by user UUID and config ID
 	roulette, err := s.repo.GetRouletteByUserAndConfig(ctx, userUUID, rouletteConfigID)
 	if err != nil {
+		log.Printf("roulette/service: GetRouletteStatusByUser failed to load roulette user_uuid=%s config_id=%d: %v", userUUID, rouletteConfigID, err)
 		return nil, fmt.Errorf("failed to get roulette: %w", err)
 	}
 
@@ -155,6 +173,7 @@ func (s *RouletteService) GetRouletteStatusByUser(ctx context.Context, userUUID 
 		// User hasn't started yet
 		response.RemainingSpins = config.MaxSpins
 		response.CanSpin = true
+		log.Printf("roulette/service: GetRouletteStatusByUser success user_uuid=%s state=new remaining=%d", userUUID, response.RemainingSpins)
 		return response, nil
 	}
 
@@ -170,6 +189,7 @@ func (s *RouletteService) GetRouletteStatusByUser(ctx context.Context, userUUID 
 		response.RemainingSpins = config.MaxSpins - roulette.SpinNumber
 		response.CanSpin = response.RemainingSpins > 0
 	}
+	log.Printf("roulette/service: GetRouletteStatusByUser success user_uuid=%s spin_number=%d prize_taken=%t remaining=%d", userUUID, roulette.SpinNumber, roulette.PrizeTaken, response.RemainingSpins)
 
 	return response, nil
 }
@@ -638,7 +658,7 @@ func (s *RouletteService) TakePrize(ctx context.Context, preauthTokenStr string,
 	// Create rating entry for the prize using prize_value_id
 	if s.ratingRepo != nil {
 		var points int64
-		if prizeValueID != nil && s.prizeValueRepo != nil {
+		if s.prizeValueRepo != nil {
 			pv, err := s.prizeValueRepo.GetPrizeValueByID(ctx, *prizeValueID)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get prize value for rating: %w", err)
@@ -742,17 +762,21 @@ func (s *RouletteService) GetOrCreatePreauthTokenForUser(ctx context.Context, us
 
 	existingToken, err := s.repo.GetPreauthTokenByUserUUIDAndConfig(ctx, userUUID, rouletteConfigID)
 	if err != nil {
+		log.Printf("roulette/service: GetOrCreatePreauthTokenForUser failed to query existing token user_uuid=%s config_id=%d: %v", userUUID, rouletteConfigID, err)
 		return "", fmt.Errorf("failed to get preauth token by user: %w", err)
 	}
 	if existingToken != nil {
+		log.Printf("roulette/service: GetOrCreatePreauthTokenForUser reused existing token user_uuid=%s config_id=%d", userUUID, rouletteConfigID)
 		return existingToken.Token, nil
 	}
 
 	config, err := s.repo.GetRouletteConfigByID(ctx, rouletteConfigID)
 	if err != nil {
+		log.Printf("roulette/service: GetOrCreatePreauthTokenForUser failed to load config id=%d: %v", rouletteConfigID, err)
 		return "", fmt.Errorf("failed to get roulette config: %w", err)
 	}
 	if config == nil || !config.IsActive {
+		log.Printf("roulette/service: GetOrCreatePreauthTokenForUser config missing/inactive id=%d", rouletteConfigID)
 		return "", errors.New("roulette config not found or inactive")
 	}
 
@@ -770,10 +794,13 @@ func (s *RouletteService) GetOrCreatePreauthTokenForUser(ctx context.Context, us
 		// If a token already exists for this user+config (race or prior link), return it
 		existingToken, getErr := s.repo.GetPreauthTokenByUserUUIDAndConfig(ctx, userUUID, rouletteConfigID)
 		if getErr == nil && existingToken != nil {
+			log.Printf("roulette/service: GetOrCreatePreauthTokenForUser recovered race existing token user_uuid=%s config_id=%d", userUUID, rouletteConfigID)
 			return existingToken.Token, nil
 		}
+		log.Printf("roulette/service: GetOrCreatePreauthTokenForUser failed to create token user_uuid=%s config_id=%d: %v", userUUID, rouletteConfigID, err)
 		return "", fmt.Errorf("failed to create preauth token: %w", err)
 	}
+	log.Printf("roulette/service: GetOrCreatePreauthTokenForUser created token user_uuid=%s config_id=%d", userUUID, rouletteConfigID)
 
 	return token, nil
 }
@@ -786,13 +813,17 @@ func (s *RouletteService) GetExistingPreauthToken(ctx context.Context, sessionID
 
 	// Use session_id + IP derived token (IP can be empty)
 	token := generateTokenFromSessionAndIP(sessionID, ipAddress)
+	log.Printf("roulette/service: GetExistingPreauthToken lookup session_id_present=%t ip=%s", sessionID != "", ipAddress)
 	existingToken, err := s.repo.GetPreauthToken(ctx, token)
 	if err != nil {
+		log.Printf("roulette/service: GetExistingPreauthToken failed: %v", err)
 		return "", fmt.Errorf("failed to check existing token: %w", err)
 	}
 	if existingToken == nil {
+		log.Printf("roulette/service: GetExistingPreauthToken not found")
 		return "", errors.New("preauth token not found")
 	}
+	log.Printf("roulette/service: GetExistingPreauthToken found token_id=%d", existingToken.ID)
 
 	return existingToken.Token, nil
 }
@@ -805,26 +836,33 @@ func (s *RouletteService) LinkPreauthTokenToUser(ctx context.Context, preauthTok
 
 	token, err := s.repo.GetPreauthToken(ctx, preauthToken)
 	if err != nil {
+		log.Printf("roulette/service: LinkPreauthTokenToUser failed to load token user_uuid=%s: %v", userUUID, err)
 		return fmt.Errorf("failed to get preauth token: %w", err)
 	}
 	if token == nil {
+		log.Printf("roulette/service: LinkPreauthTokenToUser token not found user_uuid=%s", userUUID)
 		return errors.New("preauth token not found")
 	}
 
 	if token.UserUUID != nil {
 		if *token.UserUUID == userUUID {
+			log.Printf("roulette/service: LinkPreauthTokenToUser already linked token_id=%d user_uuid=%s", token.ID, userUUID)
 			return nil
 		}
+		log.Printf("roulette/service: LinkPreauthTokenToUser token linked to another user token_id=%d", token.ID)
 		return errors.New("preauth token already linked to another user")
 	}
 
 	existingToken, err := s.repo.GetPreauthTokenByUserUUIDAndConfig(ctx, userUUID, token.RouletteConfigID)
 	if err != nil {
+		log.Printf("roulette/service: LinkPreauthTokenToUser failed to query existing by user user_uuid=%s: %v", userUUID, err)
 		return fmt.Errorf("failed to check existing preauth token for user: %w", err)
 	}
 	if existingToken != nil && existingToken.Token != token.Token {
+		log.Printf("roulette/service: LinkPreauthTokenToUser existing token conflict user_uuid=%s config_id=%d", userUUID, token.RouletteConfigID)
 		return errors.New("preauth token already exists for this user and roulette config")
 	}
+	log.Printf("roulette/service: LinkPreauthTokenToUser linking token_id=%d user_uuid=%s", token.ID, userUUID)
 
 	return s.repo.UpdatePreauthTokenUserUUID(ctx, preauthToken, userUUID)
 }
