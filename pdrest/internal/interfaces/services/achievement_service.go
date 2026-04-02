@@ -123,9 +123,6 @@ func (s *AchievementService) UpdateWinAchievementsOnBet(ctx context.Context, use
 		"wins_100",
 		"wins_250",
 		"wins_500",
-		"wins_1000",
-		"wins_5000",
-		"wins_10000",
 	}
 
 	for _, achievementID := range achievementIDs {
@@ -136,6 +133,9 @@ func (s *AchievementService) UpdateWinAchievementsOnBet(ctx context.Context, use
 
 		achievement, err := s.repo.GetAchievementByID(ctx, achievementID)
 		if err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "not found") {
+				continue
+			}
 			return nil, err
 		}
 		if achievement == nil {
