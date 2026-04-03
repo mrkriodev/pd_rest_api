@@ -59,6 +59,7 @@ func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingServi
 	e.GET("/auth/google/callback", h.GoogleOAuthCallback)
 	e.GET("/googlecallback", h.GoogleOAuthCallback)
 	api.GET("/status", h.Status)
+	api.GET("/rate/:address", h.GetRateByAddress)
 	api.GET("/available_events", h.AvailableEvents)
 	api.GET("/globalrating", h.GlobalRating)
 	api.GET("/getidbysession", h.GetUserIDBySession)
@@ -121,6 +122,35 @@ func NewHTTPHandler(e *echo.Echo, userService *services.UserService, ratingServi
 
 func (h *HTTPHandler) Status(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *HTTPHandler) GetRateByAddress(c echo.Context) error {
+	address := strings.TrimSpace(c.Param("address"))
+	log.Printf("rate: request started address=%s", address)
+	if address == "" {
+		log.Printf("rate: missing address")
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "address is required"})
+	}
+
+	lower := strings.ToLower(address)
+	if !strings.HasPrefix(lower, "0x") || len(lower) < 3 {
+		log.Printf("rate: invalid address format address=%s", address)
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "address must start with 0x"})
+	}
+
+	first := lower[2]
+	rate := 0
+	if first >= '1' && first <= '6' {
+		rate = 49
+	} else if (first >= '7' && first <= '9') || (first >= 'a' && first <= 'f') {
+		rate = 51
+	} else {
+		log.Printf("rate: unsupported first symbol after 0x address=%s symbol=%c", address, first)
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "unsupported address prefix"})
+	}
+
+	log.Printf("rate: success address=%s rate=%d", address, rate)
+	return c.JSON(http.StatusOK, map[string]int{"rate": rate})
 }
 
 func (h *HTTPHandler) GetAPIDocumentation(c echo.Context) error {
