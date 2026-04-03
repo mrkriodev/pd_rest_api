@@ -140,9 +140,9 @@ func (h *HTTPHandler) GetRateByAddress(c echo.Context) error {
 
 	first := lower[2]
 	rate := 0
-	if first >= '1' && first <= '6' {
+	if first >= '0' && first <= '7' {
 		rate = 49
-	} else if (first >= '7' && first <= '9') || (first >= 'a' && first <= 'f') {
+	} else if (first >= '8' && first <= '9') || (first >= 'a' && first <= 'f') {
 		rate = 51
 	} else {
 		log.Printf("rate: unsupported first symbol after 0x address=%s symbol=%c", address, first)
