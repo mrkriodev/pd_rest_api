@@ -10,7 +10,7 @@ import (
 )
 
 // BetScheduler manages async timers for bet closing
-// It schedules bet closing tasks that fetch prices from Binance after the timeframe expires
+// It schedules bet closing tasks that fetch prices from Pyth after the timeframe expires
 type BetScheduler struct {
 	repo          data.BetRepository
 	priceProvider *PriceProvider
@@ -107,11 +107,11 @@ func (s *BetScheduler) scheduleCloseBet(ctx context.Context, betID int, pair str
 	s.mu.Unlock()
 }
 
-// closeBet fetches the current price from Binance and updates the bet
+// closeBet fetches the current price from Pyth and updates the bet
 func (s *BetScheduler) closeBet(betID int, pair string) error {
 	log.Printf("Closing bet %d for pair %s", betID, pair)
 
-	// Fetch current price from Binance
+	// Fetch current price from Pyth
 	closePrice, err := s.priceProvider.GetPrice(pair)
 	if err != nil {
 		return fmt.Errorf("failed to fetch close price for bet %d: %w", betID, err)

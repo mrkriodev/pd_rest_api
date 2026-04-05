@@ -129,7 +129,7 @@ func main() {
 		ratingService = services.NewRatingService(ratingRepo)
 		eventService = services.NewEventService(eventRepo, prizeRepo, prizeValueRepo, achievementRepo, ratingRepo)
 		rouletteService = services.NewRouletteService(rouletteRepo, repo, prizeRepo, prizeValueRepo, eventRepo, ratingRepo)
-		priceProvider := services.NewPriceProvider("") // Uses OKX candles API by default
+		priceProvider := services.NewPriceProvider(cfg.Pyth.HermesURL) // Pyth Hermes latest_price_feeds
 		betScheduler = services.NewBetScheduler(betRepo, priceProvider)
 		betService = services.NewBetService(betRepo, priceProvider, betScheduler, ratingRepo)
 		achievementService = services.NewAchievementService(achievementRepo, prizeRepo, prizeValueRepo, ratingRepo, betRepo)

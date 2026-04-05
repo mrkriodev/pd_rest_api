@@ -18,6 +18,12 @@ type Config struct {
 	JWT      JWTConfig
 	Telegram TelegramConfig
 	Google   GoogleConfig
+	Pyth     PythConfig
+}
+
+// PythConfig holds Pyth Network Hermes price feed settings (see https://docs.pyth.network/price-feeds/core/api-reference).
+type PythConfig struct {
+	HermesURL string // Base URL, e.g. https://hermes.pyth.network
 }
 
 type ServerConfig struct {
@@ -127,6 +133,9 @@ func Load() *Config {
 			ClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
 			ClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
 			RedirectURL:  getEnv("GOOGLE_REDIRECT_URL", ""),
+		},
+		Pyth: PythConfig{
+			HermesURL: getEnv("PYTH_HERMES_URL", "https://hermes.pyth.network"),
 		},
 	}
 }

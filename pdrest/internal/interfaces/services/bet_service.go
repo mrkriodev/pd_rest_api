@@ -75,9 +75,9 @@ func (s *BetService) OpenBet(ctx context.Context, userUUID string, req *domain.O
 	}
 
 	// Schedule bet closing if scheduler is available
-	// This will fetch price from Binance when bet opens, then schedule another fetch after timeframe
+	// This will fetch price from Pyth when bet opens, then schedule another fetch after timeframe
 	if s.scheduler != nil {
-		// Fetch current price from Binance when bet opens (optional, for verification)
+		// Fetch current price from Pyth when bet opens (optional, for verification)
 		// The main price fetch happens at close time
 		if err := s.scheduler.ScheduleBetClosing(bet.ID, bet.Pair, bet.OpenTime, bet.Timeframe); err != nil {
 			// Log error but don't fail bet creation
